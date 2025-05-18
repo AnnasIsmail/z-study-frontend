@@ -10,6 +10,9 @@ import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import DashboardPage from '../pages/DashboardPage';
 import ProfilePage from '../pages/ProfilePage';
+import ChatPage from "../pages/ChatPage";
+import TopupPage from "../pages/TopupPage";
+import CodeAssistantPage from "../pages/CodeAssistantPage";
 
 const AppRoutes: React.FC = () => {
   const { loading } = useAuth();
@@ -29,14 +32,16 @@ const AppRoutes: React.FC = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        
+
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/profile" element={<ProfilePage />} />
-          {/* Additional protected routes would go here */}
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/topup" element={<TopupPage />} />
+          <Route path="/code-assistant" element={<CodeAssistantPage />} />
         </Route>
-        
+
         {/* Fallback route */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
