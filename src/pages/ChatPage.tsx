@@ -104,12 +104,18 @@ const handleSend = async () => {
         buffer = lines.pop() || ''; // Save incomplete line
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(5).trim();
+            console.log(line);
             
+          if (line.startsWith('data: ')) {
+            let jsonStr = line.slice(5).trim();
+            
+            if (jsonStr.startsWith('data: ')) jsonStr = jsonStr.slice(5).trim();
+
             if (jsonStr === '[DONE]') continue;
 
             try {
+                console.log(jsonStr);
+                
               const data = JSON.parse(jsonStr);
               if (data.choices?.[0]?.delta?.content) {
                 accumulatedContent += data.choices[0].delta.content;
@@ -148,7 +154,7 @@ const handleSend = async () => {
   };
 
   return (
-    <MainLayout>
+    <MainLayout hideFooter>
       <Box
         sx={{
           py: 4,
@@ -375,7 +381,6 @@ const handleSend = async () => {
                           {streamedResponse}
                           {loading && (
                             <Box
-                              component="span"
                               sx={{ display: "inline-block", ml: 1 }}
                             >
                               <CircularProgress size={16} />
