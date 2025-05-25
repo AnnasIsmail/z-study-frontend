@@ -1,59 +1,76 @@
 import api from './api';
+import { StreamRequest, FileProcessRequest } from "../types";
 
 export const getModels = async () => {
   try {
-    const response = await api.get('/llm/models');
+    const response = await api.get("/llm/models");
     return response.data;
-  } catch (error) {
-    throw new Error(error.response?.data?.message || 'Failed to fetch models');
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || "Failed to fetch models");
   }
 };
 
-export const chatCompletion = async (payload: {
-  model: string;
-  messages: Array<{ role: string; content: string }>;
-  max_tokens?: number;
-}) => {
-  try {
-    const response = await api.post('/llm/chat', payload);
-    return response.data;
-  } catch (error) {
-    throw new Error(error.response?.data?.message || 'Chat completion failed');
-  }
-};
-
-export const chatCompletionStream = async (payload: {
-  model: string;
-  messages: Array<{ role: string; content: string }>;
-  max_tokens?: number;
-}) => {
-  const token = localStorage.getItem('token');
-  const response = await fetch('http://localhost:3000/api/llm/chat/stream', {
-    method: 'POST',
+export const chatCompletionStream = async (
+  request: StreamRequest
+): Promise<ReadableStream<Uint8Array>> => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(`${api.defaults.baseURL}/chat/stream`, {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(request),
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Stream failed' }));
+    const error = await response
+      .json()
+      .catch(() => ({ message: "Stream failed" }));
     throw new Error(error.message);
   }
 
-  return response.body;
+  return response.body!;
 };
 
-export const processFile = async (payload: {
-  fileId: string;
-  model: string;
-  prompt: string;
-}) => {
+export const processFileStream = async (
+  request: FileProcessRequest
+): Promise<ReadableStream<Uint8Array>> => {
+  const token = localStorage.getItem("token");
+  const response = await fetch(
+    `${api.defaults.baseURL}/llm/process-file/stream`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(request),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response
+      .json()
+      .catch(() => ({ message: "File processing failed" }));
+    throw new Error(error.message);
+  }
+
+  return response.body!;
+};
+
+export const uploadFile = async (file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
   try {
-    const response = await api.post('/llm/process-file', payload);
+    const response = await api.post("/llm/upload", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
     return response.data;
-  } catch (error) {
-    throw new Error(error.response?.data?.message || 'File processing failed');
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || "File upload failed");
   }
 };

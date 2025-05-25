@@ -66,3 +66,113 @@ export interface FeatureCard {
   color: string;
   path: string;
 }
+
+export interface LLMModel {
+  id: string;
+  hugging_face_id: string;
+  name: string;
+  created: number;
+  description: string;
+  context_length: number;
+  architecture: {
+    modality: string;
+    input_modalities: string[];
+    output_modalities: string[];
+    tokenizer: string;
+    instruct_type: string | null;
+  };
+  pricing: {
+    prompt: string;
+    completion: string;
+    request: string;
+    image: string;
+    web_search: string;
+    internal_reasoning: string;
+    input_cache_read: string;
+    input_cache_write: string;
+  };
+  top_provider: {
+    context_length: number;
+    max_completion_tokens: number;
+    is_moderated: boolean;
+  };
+  per_request_limits: unknown;
+  supported_parameters: string[];
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface Conversation {
+  _id: string;
+  title: string;
+  lastMessageAt: string;
+  conversationCreatedAt: string;
+}
+
+export interface ChatHistory {
+  _id: string;
+  conversationId: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUSD: number;
+  costIDR: number;
+  content: {
+    prompt: [
+      {
+        role: string;
+        content: string;
+      }
+    ];
+    response: string;
+  };
+  filesUrl?: string[];
+  isEdited?: boolean;
+  previousVersions?: Array<{
+    prompt: string;
+    response: string;
+    editedAt: string;
+  }>;
+}
+
+export interface ConversationsResponse {
+  results: Conversation[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
+export interface ChatHistoryResponse {
+  results: ChatHistory[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
+export interface StreamRequest {
+  model: string;
+  messages: ChatMessage[];
+  max_tokens?: number;
+  conversationId?: string;
+}
+
+export interface FileProcessRequest {
+  fileId: string;
+  model: string;
+  prompt: string;
+  max_tokens?: number;
+  conversationId?: string;
+}
+
+export interface ChatUpdateRequest {
+  content: {
+    prompt: string;
+    response: string;
+  };
+}
