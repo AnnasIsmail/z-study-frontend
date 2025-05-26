@@ -79,7 +79,8 @@ const ChatPage: React.FC = () => {
     try {
       const stream = await chatCompletionStream({
         model: selectedModel,
-        messages: [...messages, userMessage],
+        // messages: [...messages, userMessage],
+        messages: [userMessage],
         conversationId: selectedConversation?._id
       });
 
@@ -115,9 +116,20 @@ const ChatPage: React.FC = () => {
 
               try {
                 const data = JSON.parse(jsonStr);
-                if (data.choices?.[0]?.delta?.content) {
-                  accumulatedContent += data.choices[0].delta.content;
-                  setStreamedResponse(prev => prev + data.choices[0].delta.content);
+                console.log(data);
+                
+                if(data.choices !== null){
+                    if (data.choices?.[0]?.delta?.content) {
+                      accumulatedContent += data.choices[0].delta.content;
+                      setStreamedResponse(prev => prev + data.choices[0].delta.content);
+                    }
+                }
+                if(data.conversation !== null){
+                    const data = JSON.parse(jsonStr);
+                    const conversation: Conversation = data.conversation;
+                    console.log(conversation);
+                    
+                    setSelectedConversation(conversation)
                 }
               } catch (e) {
                 console.error('Error parsing JSON:', e);
