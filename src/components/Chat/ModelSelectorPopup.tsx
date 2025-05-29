@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -22,95 +22,143 @@ import {
   Tooltip,
   useTheme,
   useMediaQuery,
-} from '@mui/material';
-import { X, Search, ChevronDown, Check, Info, ImageIcon, TextIcon, MessageSquare, DollarSign } from 'lucide-react';
-import { LLMModel } from '../../types';
+  CircularProgress,
+  Pagination,
+} from "@mui/material";
+import {
+  X,
+  Search,
+  ChevronDown,
+  Check,
+  Info,
+  ImageIcon,
+  TextIcon,
+  DollarSign,
+} from "lucide-react";
+import { LLMModel } from "../../types";
+import { getModels, ModelsResponse } from "../../services/llm";
+import { debounce } from "lodash";
 
 interface ModelSelectorPopupProps {
   open: boolean;
   onClose: () => void;
-  models: LLMModel[];
   selectedModel: string;
   onSelectModel: (modelId: string) => void;
-  loading: boolean;
 }
 
 // Define input modality types
 const INPUT_MODALITIES = [
-  { value: 'text', label: 'Text', icon: <TextIcon size={14} /> },
-  { value: 'image', label: 'Image', icon: <ImageIcon size={14} /> },
+  { value: "text", label: "Text", icon: <TextIcon size={14} /> },
+  { value: "image", label: "Image", icon: <ImageIcon size={14} /> },
 ];
 
 const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
   open,
   onClose,
-  models,
   selectedModel,
   onSelectModel,
-  loading,
 }) => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  
-  // State for filters and search
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedModalities, setSelectedModalities] = useState<string[]>([]);
-  const [sortOption, setSortOption] = useState<string>('price-asc');
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-  // Calculate model price (using prompt price as the main indicator)
-  const getModelPrice = (model: LLMModel): number => {
-    return parseFloat(model.pricing?.prompt || '0');
+  // State management
+  const [loading, setLoading] = useState(false);
+  const [modelsData, setModelsData] = useState<ModelsResponse | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedModalities, setSelectedModalities] = useState<string[]>([]);
+  const [sortOption, setSortOption] = useState<string>("price-asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [error, setError] = useState<string | null>(null);
+
+  // Debounced search function
+  const debouncedSearch = useCallback(
+    debounce((query: string) => {
+      setCurrentPage(1); // Reset to first page when searching
+      fetchModels({
+        search: query,
+        modalities: selectedModalities,
+        sort: sortOption,
+        page: 1,
+      });
+    }, 300),
+    [selectedModalities, sortOption]
+  );
+
+  // Fetch models function
+  const fetchModels = async (params: {
+    search?: string;
+    modalities?: string[];
+    sort?: string;
+    page?: number;
+  }) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getModels({
+        search: params.search || "",
+        modalities: params.modalities || [],
+        sort: params.sort || "price-asc",
+        page: params.page || 1,
+        limit: 24, // Show 24 models per page
+        group: true,
+      });
+      setModelsData(response.data);
+    } catch (err) {
+      setError("Failed to fetch models");
+      console.error("Error fetching models:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Filter and sort models
-  const filteredModels = useMemo(() => {
-    if (!models.length) return [];
-
-    // Apply search filter
-    let filtered = models;
-    if (searchQuery) {
-      filtered = filtered.filter(model => 
-        model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        model.description.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Apply modality filter
-    if (selectedModalities.length > 0) {
-      filtered = filtered.filter(model => {
-        const modelModalities = model.architecture?.input_modalities || [];
-        return selectedModalities.some(modality => modelModalities.includes(modality));
+  // Initial load and when popup opens
+  useEffect(() => {
+    if (open && !modelsData) {
+      fetchModels({
+        search: searchQuery,
+        modalities: selectedModalities,
+        sort: sortOption,
+        page: currentPage,
       });
     }
+  }, [open]);
 
-    // Apply sorting
-    return [...filtered].sort((a, b) => {
-      switch (sortOption) {
-        case 'price-asc':
-          return getModelPrice(a) - getModelPrice(b);
-        case 'price-desc':
-          return getModelPrice(b) - getModelPrice(a);
-        case 'context-desc':
-          return (b.context_length || 0) - (a.context_length || 0);
-        case 'name-asc':
-          return a.name.localeCompare(b.name);
-        default:
-          return 0;
-      }
+  // Handle search input changes
+  useEffect(() => {
+    if (open) {
+      debouncedSearch(searchQuery);
+    }
+    return () => {
+      debouncedSearch.cancel();
+    };
+  }, [searchQuery, debouncedSearch, open]);
+
+  // Handle filter/sort changes
+  useEffect(() => {
+    if (open && modelsData) {
+      setCurrentPage(1);
+      fetchModels({
+        search: searchQuery,
+        modalities: selectedModalities,
+        sort: sortOption,
+        page: 1,
+      });
+    }
+  }, [selectedModalities, sortOption, open]);
+
+  // Handle page changes
+  const handlePageChange = (
+    event: React.ChangeEvent<unknown>,
+    page: number
+  ) => {
+    setCurrentPage(page);
+    fetchModels({
+      search: searchQuery,
+      modalities: selectedModalities,
+      sort: sortOption,
+      page,
     });
-  }, [models, searchQuery, selectedModalities, sortOption]);
-
-  // Group models by modality
-  const groupedModels = useMemo(() => {
-    return filteredModels.reduce<Record<string, LLMModel[]>>((acc, model) => {
-      const modality = model.architecture?.modality || 'Unknown';
-      if (!acc[modality]) {
-        acc[modality] = [];
-      }
-      acc[modality].push(model);
-      return acc;
-    }, {});
-  }, [filteredModels]);
+  };
 
   // Format price for display
   const formatPrice = (price: string): string => {
@@ -123,9 +171,9 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
 
   // Handle modality filter changes
   const handleModalityChange = (modality: string) => {
-    setSelectedModalities(prev => 
+    setSelectedModalities((prev) =>
       prev.includes(modality)
-        ? prev.filter(m => m !== modality)
+        ? prev.filter((m) => m !== modality)
         : [...prev, modality]
     );
   };
@@ -143,14 +191,133 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
 
   // Reset filters
   const resetFilters = () => {
-    setSearchQuery('');
+    setSearchQuery("");
     setSelectedModalities([]);
-    setSortOption('price-asc');
+    setSortOption("price-asc");
+    setCurrentPage(1);
   };
 
+  // Render model cards
+  const renderModelCards = (models: LLMModel[]) => (
+    <Grid container spacing={2}>
+      {models.map((model) => (
+        <Grid item xs={12} sm={6} md={4} key={model.id}>
+          <Card
+            sx={{
+              cursor: "pointer",
+              transition: "all 0.2s",
+              border:
+                model.id === selectedModel
+                  ? `2px solid ${theme.palette.primary.main}`
+                  : "2px solid transparent",
+              "&:hover": {
+                boxShadow: 3,
+                transform: "translateY(-2px)",
+              },
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={() => handleSelectModel(model.id)}
+            elevation={1}
+          >
+            <CardContent
+              sx={{
+                p: 2,
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <Box
+                sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}
+              >
+                <Typography
+                  variant="subtitle2"
+                  noWrap
+                  title={model.name}
+                  sx={{ maxWidth: "70%", fontWeight: 600 }}
+                >
+                  {model.name}
+                </Typography>
+                {model.id === selectedModel && (
+                  <Chip
+                    label={<Check size={14} />}
+                    size="small"
+                    color="primary"
+                    sx={{
+                      height: 20,
+                      minWidth: 20,
+                      "& .MuiChip-label": { p: 0 },
+                    }}
+                  />
+                )}
+              </Box>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  mb: 1.5,
+                  flexGrow: 1,
+                }}
+              >
+                {model.description || "No description available"}
+              </Typography>
+              <Box sx={{ mt: "auto" }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    mb: 1,
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Context: {((model.context_length || 0) / 1000).toFixed(0)}k
+                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    <Tooltip title="Price per token">
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          mr: 0.5,
+                        }}
+                      >
+                        <DollarSign size={12} color="#666" />
+                      </Box>
+                    </Tooltip>
+                    <Typography variant="caption" color="text.secondary">
+                      {formatPrice(model.pricing?.prompt || "0")}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+                  {model.architecture?.input_modalities?.map((modality) => (
+                    <Chip
+                      key={`input-${modality}`}
+                      label={modality}
+                      size="small"
+                      sx={{ height: 20, fontSize: "0.6rem", borderRadius: 1 }}
+                      color={modality === "image" ? "secondary" : "primary"}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      ))}
+    </Grid>
+  );
+
   return (
-    <Dialog 
-      open={open} 
+    <Dialog
+      open={open}
       onClose={onClose}
       maxWidth="md"
       fullWidth
@@ -158,19 +325,34 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
       PaperProps={{
         sx: {
           borderRadius: 2,
-          overflow: 'hidden',
-        }
+          overflow: "hidden",
+        },
       }}
     >
-      <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2 }}>
+      <DialogTitle
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          p: 2,
+        }}
+      >
         <Typography variant="h6">Select AI Model</Typography>
         <IconButton onClick={onClose} size="small">
           <X size={18} />
         </IconButton>
       </DialogTitle>
-      
-      <Box sx={{ px: 3, pb: 2, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
-        {/* Search */}
+
+      {/* Search and Sort Controls */}
+      <Box
+        sx={{
+          px: 3,
+          pb: 2,
+          display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
+          gap: 2,
+        }}
+      >
         <TextField
           placeholder="Search models..."
           fullWidth
@@ -186,8 +368,6 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
           }}
           sx={{ flexGrow: 1 }}
         />
-        
-        {/* Sort */}
         <FormControl size="small" sx={{ minWidth: 160 }}>
           <InputLabel id="sort-label">Sort By</InputLabel>
           <Select
@@ -204,9 +384,18 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
           </Select>
         </FormControl>
       </Box>
-      
-      {/* Modality filters */}
-      <Box sx={{ px: 3, pb: 2, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+
+      {/* Modality Filters */}
+      <Box
+        sx={{
+          px: 3,
+          pb: 2,
+          display: "flex",
+          gap: 1,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
         <Typography variant="body2" sx={{ mr: 1 }}>
           Input Type:
         </Typography>
@@ -214,158 +403,115 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
           <Chip
             key={modality.value}
             label={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 {modality.icon}
                 <Typography variant="caption">{modality.label}</Typography>
               </Box>
             }
             onClick={() => handleModalityChange(modality.value)}
-            color={selectedModalities.includes(modality.value) ? "primary" : "default"}
-            sx={{ 
+            color={
+              selectedModalities.includes(modality.value)
+                ? "primary"
+                : "default"
+            }
+            sx={{
               borderRadius: 1.5,
-              '&:hover': { opacity: 0.9 }
+              "&:hover": { opacity: 0.9 },
             }}
           />
         ))}
-        
-        {(searchQuery || selectedModalities.length > 0 || sortOption !== 'price-asc') && (
-          <Button 
-            size="small" 
+        {(searchQuery ||
+          selectedModalities.length > 0 ||
+          sortOption !== "price-asc") && (
+          <Button
+            size="small"
             onClick={resetFilters}
-            sx={{ ml: 'auto', fontSize: '0.75rem' }}
+            sx={{ ml: "auto", fontSize: "0.75rem" }}
           >
             Reset Filters
           </Button>
         )}
       </Box>
-      
+
       <Divider />
-      
+
       <DialogContent sx={{ p: 2 }}>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-            <Typography>Loading models...</Typography>
+          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : error ? (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+            <Typography color="error">{error}</Typography>
           </Box>
         ) : (
           <>
-            {Object.keys(groupedModels).length === 0 ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            {!modelsData ||
+            (typeof modelsData.models === "object" &&
+              Object.keys(modelsData.models).length === 0) ? (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
                 <Typography>No models match your filters</Typography>
               </Box>
             ) : (
               <>
-                {Object.entries(groupedModels).map(([modality, modalityModels]) => (
-                  <Box key={modality} sx={{ mb: 3 }}>
-                    <Typography 
-                      variant="subtitle1" 
-                      sx={{ 
-                        mb: 1.5, 
-                        fontWeight: 600,
-                        px: 1
-                      }}
-                    >
-                      {modality}
+                {/* Results Info */}
+                {modelsData && (
+                  <Box
+                    sx={{
+                      mb: 2,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Showing{" "}
+                      {Array.isArray(modelsData.models)
+                        ? modelsData.models.length
+                        : Object.values(modelsData.models).flat().length}{" "}
+                      of {modelsData.pagination.total} models
                     </Typography>
-                    
-                    <Grid container spacing={2}>
-                      {modalityModels.map((model) => (
-                        <Grid item xs={12} sm={6} md={4} key={model.id}>
-                          <Card 
-                            sx={{ 
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                              border: model.id === selectedModel 
-                                ? `2px solid ${theme.palette.primary.main}` 
-                                : '2px solid transparent',
-                              '&:hover': {
-                                boxShadow: 3,
-                                transform: 'translateY(-2px)'
-                              },
-                              height: '100%',
-                              display: 'flex',
-                              flexDirection: 'column'
-                            }}
-                            onClick={() => handleSelectModel(model.id)}
-                            elevation={1}
-                          >
-                            <CardContent sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                <Typography 
-                                  variant="subtitle2" 
-                                  noWrap 
-                                  title={model.name}
-                                  sx={{ maxWidth: '70%', fontWeight: 600 }}
-                                >
-                                  {model.name}
-                                </Typography>
-                                {model.id === selectedModel && (
-                                  <Chip
-                                    label={<Check size={14} />}
-                                    size="small"
-                                    color="primary"
-                                    sx={{ height: 20, minWidth: 20, '& .MuiChip-label': { p: 0 } }}
-                                  />
-                                )}
-                              </Box>
-                              
-                              <Typography 
-                                variant="caption" 
-                                color="text.secondary" 
-                                sx={{ 
-                                  display: '-webkit-box',
-                                  WebkitLineClamp: 2,
-                                  WebkitBoxOrient: 'vertical',
-                                  overflow: 'hidden',
-                                  mb: 1.5,
-                                  flexGrow: 1
-                                }}
-                              >
-                                {model.description || 'No description available'}
-                              </Typography>
-                              
-                              <Box sx={{ mt: 'auto' }}>
-                                {/* Model details */}
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Context: {(model.context_length / 1000).toFixed(0)}k
-                                  </Typography>
-                                  
-                                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                    <Tooltip title="Price per token">
-                                      <Box sx={{ display: 'flex', alignItems: 'center', mr: 0.5 }}>
-                                        <DollarSign size={12} color="#666" />
-                                      </Box>
-                                    </Tooltip>
-                                    <Typography variant="caption" color="text.secondary">
-                                      {formatPrice(model.pricing?.prompt || '0')}
-                                    </Typography>
-                                  </Box>
-                                </Box>
-                                
-                                {/* Input/Output Modality Tags */}
-                                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                  {model.architecture?.input_modalities?.map((modality) => (
-                                    <Chip
-                                      key={`input-${modality}`}
-                                      label={modality}
-                                      size="small"
-                                      sx={{ 
-                                        height: 20, 
-                                        fontSize: '0.6rem',
-                                        borderRadius: 1
-                                      }}
-                                      color={modality === 'image' ? 'secondary' : 'primary'}
-                                    />
-                                  ))}
-                                </Box>
-                              </Box>
-                            </CardContent>
-                          </Card>
-                        </Grid>
-                      ))}
-                    </Grid>
                   </Box>
-                ))}
+                )}
+
+                {/* Models Display */}
+                {modelsData &&
+                typeof modelsData.models === "object" &&
+                !Array.isArray(modelsData.models)
+                  ? // Grouped display
+                    Object.entries(modelsData.models).map(
+                      ([modality, modalityModels]) => (
+                        <Box key={modality} sx={{ mb: 3 }}>
+                          <Typography
+                            variant="subtitle1"
+                            sx={{ mb: 1.5, fontWeight: 600, px: 1 }}
+                          >
+                            {modality}
+                          </Typography>
+                          {renderModelCards(modalityModels)}
+                        </Box>
+                      )
+                    )
+                  : // Flat display
+                    modelsData &&
+                    Array.isArray(modelsData.models) &&
+                    renderModelCards(modelsData.models)}
+
+                {/* Pagination */}
+                {modelsData && modelsData.pagination.totalPages > 1 && (
+                  <Box
+                    sx={{ display: "flex", justifyContent: "center", mt: 3 }}
+                  >
+                    <Pagination
+                      count={modelsData.pagination.totalPages}
+                      page={currentPage}
+                      onChange={handlePageChange}
+                      color="primary"
+                      showFirstButton
+                      showLastButton
+                    />
+                  </Box>
+                )}
               </>
             )}
           </>

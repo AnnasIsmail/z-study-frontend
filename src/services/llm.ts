@@ -1,10 +1,48 @@
 import api from './api';
-import { StreamRequest, FileProcessRequest } from "../types";
+import {
+  StreamRequest,
+  FileProcessRequest,
+  LLMModel,
+  ModelsResponse,
+  ModelQueryParams,
+} from "../types";
 
-export const getModels = async () => {
+export const getModels = async (
+  params: ModelQueryParams = {}
+): Promise<{ success: boolean; data: ModelsResponse }> => {
   try {
-    const response = await api.get("/llm/models");
+    const queryParams = new URLSearchParams();
+
+    if (params.search) queryParams.append("search", params.search);
+    if (params.modalities?.length)
+      queryParams.append("modalities", params.modalities.join(","));
+    if (params.sort) queryParams.append("sort", params.sort);
+    if (params.page) queryParams.append("page", params.page.toString());
+    if (params.limit) queryParams.append("limit", params.limit.toString());
+    if (params.group) queryParams.append("group", params.group.toString());
+
+    const response = await api.get(`/llm/models?${queryParams.toString()}`);
     return response.data;
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || "Failed to fetch models");
+  }
+};
+
+// For backward compatibility - get all models without pagination
+export const getAllModels = async (): Promise<{
+  success: boolean;
+  data: { models: LLMModel[] };
+}> => {
+  try {
+    const response = await getModels({ limit: 1 }); // Get large number to fetch all
+    return {
+      success: true,
+      data: {
+        models: Array.isArray(response.data.models)
+          ? response.data.models
+          : Object.values(response.data.models).flat(),
+      },
+    };
   } catch (error: any) {
     throw new Error(error.response?.data?.message || "Failed to fetch models");
   }

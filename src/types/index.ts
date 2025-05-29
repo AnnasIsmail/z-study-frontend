@@ -176,3 +176,33 @@ export interface ChatUpdateRequest {
     response: string;
   };
 }
+
+export interface ModelQueryParams {
+  search?: string;
+  modalities?: string[];
+  sort?: string;
+  page?: number;
+  limit?: number;
+  group?: boolean;
+}
+
+export interface ModelPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+export interface ModelFilters {
+  search: string;
+  modalities: string[];
+  sort: string;
+}
+
+export interface ModelsResponse {
+  models: LLMModel[] | Record<string, LLMModel[]>;
+  pagination: ModelPagination;
+  filters: ModelFilters;
+}
