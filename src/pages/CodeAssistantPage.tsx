@@ -111,7 +111,7 @@ const CodeAssistantPage: React.FC = () => {
           ...messages,
           userMessage,
         ],
-        conversationId: selectedConversation?._id,
+        conversationId: selectedConversation?.conversationId,
       });
 
       const reader = response.getReader();
@@ -768,7 +768,7 @@ const CodeAssistantPage: React.FC = () => {
           >
             <ChatHistorySidebar
               onSelectConversation={handleSelectConversation}
-              selectedConversationId={selectedConversation?._id}
+              selectedConversationId={selectedConversation?.conversationId}
             />
           </Grid>
         </Grid>

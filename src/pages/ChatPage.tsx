@@ -113,7 +113,7 @@ const ChatPage: React.FC = () => {
         model: selectedModel,
         // messages: [...messages, userMessage],
         messages: [userMessage],
-        conversationId: selectedConversation?._id,
+        conversationId: selectedConversation?.conversationId,
       });
 
       if (!stream) throw new Error("Failed to initialize stream");
@@ -207,7 +207,7 @@ const ChatPage: React.FC = () => {
     try {
       setLoadingHistory(true);
       setError("");
-      const response = await getChatHistory(conversation._id);
+      const response = await getChatHistory(conversation.conversationId);
 
       // Transform chat history into messages format
       const chatMessages: ChatMessageType[] = [];
@@ -253,7 +253,7 @@ const ChatPage: React.FC = () => {
           >
             <ChatHistorySidebar
               onSelectConversation={handleSelectConversation}
-              selectedConversationId={selectedConversation?._id}
+              selectedConversationId={selectedConversation?.conversationId}
             />
           </Grid>
 
@@ -291,7 +291,7 @@ const ChatPage: React.FC = () => {
               >
                 <ChatHistoryXS
                   onSelectConversation={handleSelectConversation}
-                  selectedConversationId={selectedConversation?._id}
+                  selectedConversationId={selectedConversation?.conversationId}
                 />
                 <Bot size={24} />
 

@@ -106,14 +106,13 @@ export interface ChatMessage {
 }
 
 export interface Conversation {
-  _id: string;
+  conversationId: string;
   title: string;
   lastMessageAt: string;
   conversationCreatedAt: string;
 }
 
 export interface ChatHistory {
-  _id: string;
   conversationId: string;
   model: string;
   promptTokens: number;

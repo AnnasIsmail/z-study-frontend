@@ -85,18 +85,18 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
 
   const handleDeleteConfirm = async () => {
     if (!conversationToDelete) return;
-    
+
     try {
       setDeleting(true);
       await deleteConversation(conversationToDelete);
-      setConversations((prev) => 
-        prev.filter((conv) => conv._id !== conversationToDelete)
+      setConversations((prev) =>
+        prev.filter((conv) => conv.conversationId !== conversationToDelete)
       );
       setDeleteDialogOpen(false);
       setConversationToDelete(null);
       fetchConversations();
     } catch (err) {
-      setError('Failed to delete conversation');
+      setError("Failed to delete conversation");
       console.error(err);
     } finally {
       setDeleting(false);
@@ -106,7 +106,7 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      return format(date, 'MMM d, yyyy');
+      return format(date, "MMM d, yyyy");
     } catch (e) {
       return dateString;
     }
@@ -115,21 +115,21 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
   return (
     <Box
       sx={{
-        height: '100%',
-        borderLeft: '1px solid',
-        borderColor: 'divider',
-        display: 'flex',
-        flexDirection: 'column',
+        height: "100%",
+        borderLeft: "1px solid",
+        borderColor: "divider",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       <Box
         sx={{
           p: 2,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          borderBottom: '1px solid',
-          borderColor: 'divider',
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          borderBottom: "1px solid",
+          borderColor: "divider",
         }}
       >
         <Typography variant="subtitle1" fontWeight={600}>
@@ -137,11 +137,7 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
         </Typography>
         <Tooltip title="Refresh conversations">
           <IconButton size="small" onClick={handleRefresh} disabled={loading}>
-            {loading ? (
-              <CircularProgress size={18} />
-            ) : (
-              <RefreshCw size={18} />
-            )}
+            {loading ? <CircularProgress size={18} /> : <RefreshCw size={18} />}
           </IconButton>
         </Tooltip>
       </Box>
@@ -152,9 +148,9 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
         </Typography>
       )}
 
-      <List sx={{ flexGrow: 1, overflowY: 'auto', px: 1 }}>
+      <List sx={{ flexGrow: 1, overflowY: "auto", px: 1 }}>
         {conversations.length === 0 && !loading ? (
-          <Box sx={{ p: 2, textAlign: 'center' }}>
+          <Box sx={{ p: 2, textAlign: "center" }}>
             <Typography variant="body2" color="text.secondary">
               No conversations yet
             </Typography>
@@ -162,17 +158,19 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
         ) : (
           conversations.map((conversation) => (
             <ListItem
-              key={conversation._id}
+              key={conversation.conversationId}
               disablePadding
               sx={{ mb: 0.5 }}
             >
               <ListItemButton
-                selected={selectedConversationId === conversation._id}
+                selected={
+                  selectedConversationId === conversation.conversationId
+                }
                 onClick={() => onSelectConversation(conversation)}
                 sx={{
                   borderRadius: 1,
-                  '&.Mui-selected': {
-                    bgcolor: 'action.selected',
+                  "&.Mui-selected": {
+                    bgcolor: "action.selected",
                   },
                 }}
               >
@@ -181,22 +179,27 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
                   secondary={formatDate(conversation.lastMessageAt)}
                   primaryTypographyProps={{
                     noWrap: true,
-                    variant: 'body2',
-                    fontWeight: selectedConversationId === conversation._id ? 600 : 400,
+                    variant: "body2",
+                    fontWeight:
+                      selectedConversationId === conversation.conversationId
+                        ? 600
+                        : 400,
                   }}
                   secondaryTypographyProps={{
-                    variant: 'caption',
-                    color: 'text.secondary',
+                    variant: "caption",
+                    color: "text.secondary",
                   }}
                 />
                 <Tooltip title="Delete conversation">
                   <IconButton
                     edge="end"
                     size="small"
-                    onClick={(e) => handleDeleteClick(conversation._id, e)}
+                    onClick={(e) =>
+                      handleDeleteClick(conversation.conversationId, e)
+                    }
                     sx={{
                       opacity: 0.7,
-                      '&:hover': { opacity: 1 },
+                      "&:hover": { opacity: 1 },
                     }}
                   >
                     <Trash2 size={16} />
@@ -208,13 +211,13 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
         )}
 
         {loading && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+          <Box sx={{ display: "flex", justifyContent: "center", p: 2 }}>
             <CircularProgress size={24} />
           </Box>
         )}
 
         {hasMore && !loading && (
-          <Box sx={{ textAlign: 'center', p: 1 }}>
+          <Box sx={{ textAlign: "center", p: 1 }}>
             <Button size="small" onClick={handleLoadMore}>
               Load more
             </Button>
@@ -223,24 +226,33 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
       </List>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
         <DialogTitle>Delete Conversation</DialogTitle>
         <DialogContent>
           <Typography variant="body1">
-            Are you sure you want to delete this conversation? This action cannot be undone.
+            Are you sure you want to delete this conversation? This action
+            cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
+          <Button
+            onClick={() => setDeleteDialogOpen(false)}
+            disabled={deleting}
+          >
             Cancel
           </Button>
           <Button
             onClick={handleDeleteConfirm}
             color="error"
             disabled={deleting}
-            startIcon={deleting ? <CircularProgress size={16} /> : <Trash2 size={16} />}
+            startIcon={
+              deleting ? <CircularProgress size={16} /> : <Trash2 size={16} />
+            }
           >
-            {deleting ? 'Deleting...' : 'Delete'}
+            {deleting ? "Deleting..." : "Delete"}
           </Button>
         </DialogActions>
       </Dialog>
