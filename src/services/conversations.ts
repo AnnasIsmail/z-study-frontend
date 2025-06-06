@@ -20,6 +20,14 @@ export const deleteConversation = async (conversationId: string): Promise<void> 
   }
 };
 
+export const updateConversationTitle = async (conversationId: string, title: string): Promise<void> => {
+  try {
+    await api.patch(`/conversations/${conversationId}/title`, { title });
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || 'Failed to update conversation title');
+  }
+};
+
 export const getChatHistory = async (
   conversationId: string,
   page = 1,
