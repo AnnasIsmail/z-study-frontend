@@ -63,6 +63,7 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
 
   // State management
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true); // New state for initial load
   const [modelsData, setModelsData] = useState<ModelsResponse | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedModalities, setSelectedModalities] = useState<string[]>([]);
@@ -108,34 +109,38 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
       console.error("Error fetching models:", err);
     } finally {
       setLoading(false);
+      setInitialLoading(false); // Set initial loading to false after first load
     }
   };
 
-  // Initial load and when popup opens
+  // Initial data load when dialog opens
   useEffect(() => {
     if (open && !modelsData) {
+      setInitialLoading(true);
       fetchModels({
-        search: searchQuery,
-        modalities: selectedModalities,
-        sort: sortOption,
-        page: currentPage,
+        search: "",
+        modalities: [],
+        sort: "price-asc",
+        page: 1,
       });
     }
   }, [open]);
 
   // Handle search input changes
   useEffect(() => {
-    if (open) {
+    if (open && modelsData) {
+      // Only trigger search after initial load
       debouncedSearch(searchQuery);
     }
     return () => {
       debouncedSearch.cancel();
     };
-  }, [searchQuery, debouncedSearch, open]);
+  }, [searchQuery, debouncedSearch]);
 
   // Handle filter/sort changes
   useEffect(() => {
     if (open && modelsData) {
+      // Only trigger after initial load
       setCurrentPage(1);
       fetchModels({
         search: searchQuery,
@@ -144,7 +149,7 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
         page: 1,
       });
     }
-  }, [selectedModalities, sortOption, open]);
+  }, [selectedModalities, sortOption]);
 
   // Handle page changes
   const handlePageChange = (
@@ -158,6 +163,14 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
       sort: sortOption,
       page,
     });
+
+    // Scroll to top of dialog content when changing pages
+    const dialogContent = document.querySelector(
+      '[role="dialog"] .MuiDialogContent-root'
+    );
+    if (dialogContent) {
+      dialogContent.scrollTop = 0;
+    }
   };
 
   // Format price for display
@@ -195,6 +208,20 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
     setSelectedModalities([]);
     setSortOption("price-asc");
     setCurrentPage(1);
+  };
+
+  // Reset state when dialog closes
+  const handleClose = () => {
+    // Reset all states when closing
+    setModelsData(null);
+    setInitialLoading(true);
+    setLoading(false);
+    setError(null);
+    setSearchQuery("");
+    setSelectedModalities([]);
+    setSortOption("price-asc");
+    setCurrentPage(1);
+    onClose();
   };
 
   // Render model cards
@@ -318,7 +345,7 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       maxWidth="md"
       fullWidth
       fullScreen={isMobile}
@@ -338,12 +365,12 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
         }}
       >
         <Typography variant="h6">Select AI Model</Typography>
-        <IconButton onClick={onClose} size="small">
+        <IconButton onClick={handleClose} size="small">
           <X size={18} />
         </IconButton>
       </DialogTitle>
 
-      {/* Search and Sort Controls */}
+      {/* Search and Sort Controls - Disabled during initial loading */}
       <Box
         sx={{
           px: 3,
@@ -351,6 +378,8 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
           display: "flex",
           flexDirection: { xs: "column", sm: "row" },
           gap: 2,
+          opacity: initialLoading ? 0.5 : 1,
+          pointerEvents: initialLoading ? "none" : "auto",
         }}
       >
         <TextField
@@ -359,6 +388,7 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
           size="small"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          disabled={initialLoading}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -376,6 +406,7 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
             onChange={handleSortChange}
             label="Sort By"
             IconComponent={ChevronDown}
+            disabled={initialLoading}
           >
             <MenuItem value="price-asc">Price: Low to High</MenuItem>
             <MenuItem value="price-desc">Price: High to Low</MenuItem>
@@ -385,7 +416,7 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
         </FormControl>
       </Box>
 
-      {/* Modality Filters */}
+      {/* Modality Filters - Disabled during initial loading */}
       <Box
         sx={{
           px: 3,
@@ -394,6 +425,8 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
           gap: 1,
           flexWrap: "wrap",
           alignItems: "center",
+          opacity: initialLoading ? 0.5 : 1,
+          pointerEvents: initialLoading ? "none" : "auto",
         }}
       >
         <Typography variant="body2" sx={{ mr: 1 }}>
@@ -409,6 +442,7 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
               </Box>
             }
             onClick={() => handleModalityChange(modality.value)}
+            disabled={initialLoading}
             color={
               selectedModalities.includes(modality.value)
                 ? "primary"
@@ -426,6 +460,7 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
           <Button
             size="small"
             onClick={resetFilters}
+            disabled={initialLoading}
             sx={{ ml: "auto", fontSize: "0.75rem" }}
           >
             Reset Filters
@@ -435,17 +470,87 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
 
       <Divider />
 
-      <DialogContent sx={{ p: 2 }}>
-        {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-            <CircularProgress />
+      <DialogContent sx={{ p: 2, minHeight: 400 }}>
+        {initialLoading || (loading && !modelsData) ? (
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              alignItems: "center",
+              py: 6,
+              gap: 2,
+            }}
+          >
+            <CircularProgress size={40} />
+            <Typography variant="body2" color="text.secondary">
+              {initialLoading ? "Loading models..." : "Updating results..."}
+            </Typography>
           </Box>
         ) : error ? (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-            <Typography color="error">{error}</Typography>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              alignItems: "center",
+              py: 6,
+              gap: 2,
+            }}
+          >
+            <Typography color="error" variant="h6">
+              {error}
+            </Typography>
+            <Button
+              onClick={() =>
+                fetchModels({
+                  search: searchQuery,
+                  modalities: selectedModalities,
+                  sort: sortOption,
+                  page: currentPage,
+                })
+              }
+              variant="contained"
+              size="small"
+            >
+              Try Again
+            </Button>
           </Box>
         ) : (
-          <>
+          <Box sx={{ position: "relative" }}>
+            {/* Loading overlay for subsequent requests */}
+            {loading && modelsData && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: "rgba(255, 255, 255, 0.7)",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  zIndex: 1,
+                  borderRadius: 1,
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
+                >
+                  <CircularProgress size={32} />
+                  <Typography variant="caption" color="text.secondary">
+                    Updating...
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+
             {!modelsData ||
             (typeof modelsData.models === "object" &&
               Object.keys(modelsData.models).length === 0) ? (
@@ -509,12 +614,13 @@ const ModelSelectorPopup: React.FC<ModelSelectorPopupProps> = ({
                       color="primary"
                       showFirstButton
                       showLastButton
+                      disabled={loading}
                     />
                   </Box>
                 )}
               </>
             )}
-          </>
+          </Box>
         )}
       </DialogContent>
     </Dialog>
