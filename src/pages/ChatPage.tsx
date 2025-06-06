@@ -20,7 +20,7 @@ import ChatMessage from '../components/Chat/ChatMessage';
 import ChatHistorySidebar from '../components/Chat/ChatHistory';
 import { useAuth } from '../context/AuthContext';
 import { getModels, getAllModels, chatCompletionStream, summarizeChat } from "../services/llm";
-import { getChatHistory } from "../services/conversations";
+import { getChatHistory, updateConversationTitle } from "../services/conversations";
 import {
   LLMModel,
   ChatMessage as ChatMessageType,
@@ -44,6 +44,10 @@ const ChatPage: React.FC = () => {
     useState<Conversation | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [pendingSummarization, setPendingSummarization] = useState<{
+    userMessage: string;
+    conversationId: string;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,6 +57,14 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, streamedResponse]);
+
+  // Effect to handle summarization after stream completes
+  useEffect(() => {
+    if (pendingSummarization && !loading) {
+      handleSummarization(pendingSummarization.userMessage, pendingSummarization.conversationId);
+      setPendingSummarization(null);
+    }
+  }, [loading, pendingSummarization]);
 
   const fetchModels = async () => {
     try {
@@ -89,30 +101,41 @@ const ChatPage: React.FC = () => {
     return freeModels.length > 0 ? freeModels[0].id : 'meta-llama/llama-3.2-1b-instruct:free';
   };
 
+  const handleSummarization = async (userMessage: string, conversationId: string) => {
+    setSummarizing(true);
+    try {
+      const freeModel = getFreeModel();
+      const title = await summarizeChat(userMessage, freeModel);
+      
+      // Update conversation title via API
+      await updateConversationTitle(conversationId, title);
+      
+      // Update local state
+      if (selectedConversation) {
+        setSelectedConversation({
+          ...selectedConversation,
+          title: title
+        });
+      }
+    } catch (error) {
+      console.error("Failed to summarize and update conversation title:", error);
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || !selectedModel) return;
 
     const userMessage: ChatMessageType = { role: "user", content: input };
     const isFirstMessage = messages.length === 0 && !selectedConversation;
+    const currentInput = input; // Store input for summarization
     
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
     setStreamedResponse("");
     setError("");
-
-    // If this is the first message, summarize it for the conversation title
-    if (isFirstMessage) {
-      setSummarizing(true);
-      try {
-        const freeModel = getFreeModel();
-        await summarizeChat(input, freeModel);
-      } catch (error) {
-        console.error("Failed to summarize chat:", error);
-      } finally {
-        setSummarizing(false);
-      }
-    }
 
     try {
       const stream = await chatCompletionStream({
@@ -127,6 +150,7 @@ const ChatPage: React.FC = () => {
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
       let accumulatedContent = "";
+      let newConversationId: string | null = null;
 
       const processStream = async () => {
         while (true) {
@@ -137,6 +161,14 @@ const ChatPage: React.FC = () => {
               { role: "assistant", content: accumulatedContent },
             ]);
             setStreamedResponse("");
+            
+            // Schedule summarization after stream completes if this is first message
+            if (isFirstMessage && newConversationId) {
+              setPendingSummarization({
+                userMessage: currentInput,
+                conversationId: newConversationId
+              });
+            }
             break;
           }
 
@@ -168,10 +200,9 @@ const ChatPage: React.FC = () => {
                   }
                 }
                 if (data.conversation !== null) {
-                  const data = JSON.parse(jsonStr);
                   const conversation: Conversation = data.conversation;
                   console.log(conversation);
-
+                  newConversationId = conversation.conversationId;
                   setSelectedConversation(conversation);
                 }
               } catch (e) {
@@ -206,6 +237,7 @@ const ChatPage: React.FC = () => {
     setStreamedResponse("");
     setError("");
     setSelectedConversation(null);
+    setPendingSummarization(null);
   };
 
   const handleSelectConversation = async (conversation: Conversation) => {
