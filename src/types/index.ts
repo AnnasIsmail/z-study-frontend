@@ -74,6 +74,7 @@ export interface LLMModel {
   created: number;
   description: string;
   context_length: number;
+  max_completion_tokens?: number;
   architecture: {
     modality: string;
     input_modalities: string[];
@@ -103,6 +104,8 @@ export interface LLMModel {
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  chatId?: string;
+  updated?: boolean;
 }
 
 export interface Conversation {
@@ -159,6 +162,45 @@ export interface StreamRequest {
   messages: ChatMessage[];
   max_tokens?: number;
   conversationId?: string;
+  chatHistory?: ChatMessage[];
+}
+
+export interface StreamResponse {
+  conversation?: {
+    conversationId: string;
+    title: string;
+  };
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+  };
+  cost?: {
+    usd: number;
+    idr: number;
+  };
+  newChats?: {
+    userChat: {
+      chatId: string;
+      role: "user";
+      content: string;
+    };
+    assistantChat: {
+      chatId: string;
+      role: "assistant";
+      content: string;
+    };
+  };
+  optimizationInfo?: {
+    originalHistoryLength: number;
+    optimizedHistoryLength: number;
+    tokensSaved: number;
+    updatedChatsCount: number;
+  };
+  choices?: Array<{
+    delta?: {
+      content?: string;
+    };
+  }>;
 }
 
 export interface FileProcessRequest {

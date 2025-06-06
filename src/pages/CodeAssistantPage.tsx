@@ -37,7 +37,7 @@ import CodeBlock from "../components/Code/CodeBlock";
 import ChatHistorySidebar from "../components/Chat/ChatHistory";
 import { useAuth } from "../context/AuthContext";
 import { getModels, chatCompletionStream } from "../services/llm";
-import { LLMModel, ChatMessage, Conversation } from "../types";
+import { LLMModel, ChatMessage, Conversation, StreamResponse } from "../types";
 import { useNavigate } from "react-router-dom";
 
 const CodeAssistantPage: React.FC = () => {
@@ -57,6 +57,7 @@ const CodeAssistantPage: React.FC = () => {
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null);
   const [selectedTab, setSelectedTab] = useState(0);
+  const [optimizationInfo, setOptimizationInfo] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -91,6 +92,8 @@ const CodeAssistantPage: React.FC = () => {
     const userMessage: ChatMessage = {
       role: "user",
       content: input,
+      chatId: `temp-${Date.now()}`,
+      updated: false
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -98,36 +101,56 @@ const CodeAssistantPage: React.FC = () => {
     setError("");
     setLoading(true);
     setStreamingContent("");
+    setOptimizationInfo(null);
 
     try {
+      // Prepare chat history with system message for code assistance
+      const systemMessage: ChatMessage = {
+        role: "system",
+        content: "You are an expert programming assistant. Provide clear, efficient, and well-documented code solutions. Always explain your code and include best practices.",
+        chatId: "system",
+        updated: false
+      };
+
+      const chatHistory = [systemMessage, ...messages.map((msg, index) => ({
+        ...msg,
+        chatId: msg.chatId || `msg-${index}`,
+        updated: msg.updated || false
+      }))];
+
       const response = await chatCompletionStream({
         model: selectedModel,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert programming assistant. Provide clear, efficient, and well-documented code solutions. Always explain your code and include best practices.",
-          },
-          ...messages,
-          userMessage,
-        ],
+        messages: [userMessage],
         conversationId: selectedConversation?.conversationId,
+        chatHistory: chatHistory,
       });
 
       const reader = response.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       let accumulatedContent = "";
+      let streamResponseData: StreamResponse = {};
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
           // Finalize the message when stream ends
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: accumulatedContent },
-          ]);
+          const assistantMessage: ChatMessage = {
+            role: "assistant",
+            content: accumulatedContent,
+            chatId: streamResponseData.newChats?.assistantChat?.chatId || `assistant-${Date.now()}`,
+            updated: false
+          };
+
+          setMessages((prev) => [...prev, assistantMessage]);
           setStreamingContent("");
+          
+          // Show optimization info if available
+          if (streamResponseData.optimizationInfo) {
+            setOptimizationInfo(streamResponseData.optimizationInfo);
+            setTimeout(() => setOptimizationInfo(null), 5000);
+          }
+          
           break;
         }
 
@@ -148,12 +171,38 @@ const CodeAssistantPage: React.FC = () => {
             if (jsonStr === "[DONE]") continue;
 
             try {
-              const data = JSON.parse(jsonStr);
+              const data: StreamResponse = JSON.parse(jsonStr);
+              
               if (data.choices?.[0]?.delta?.content) {
                 accumulatedContent += data.choices[0].delta.content;
                 setStreamingContent(
                   (prev) => prev + data.choices[0].delta.content
                 );
+              }
+
+              // Handle other response data
+              if (data.conversation) {
+                setSelectedConversation(data.conversation);
+                streamResponseData.conversation = data.conversation;
+              }
+
+              if (data.newChats) {
+                streamResponseData.newChats = data.newChats;
+                // Update the user message with the correct chatId
+                setMessages(prev => {
+                  const updated = [...prev];
+                  if (updated[updated.length - 1]?.role === 'user') {
+                    updated[updated.length - 1] = {
+                      ...updated[updated.length - 1],
+                      chatId: data.newChats!.userChat.chatId
+                    };
+                  }
+                  return updated;
+                });
+              }
+
+              if (data.optimizationInfo) {
+                streamResponseData.optimizationInfo = data.optimizationInfo;
               }
             } catch (e) {
               console.error("Error parsing JSON:", e);
@@ -164,6 +213,8 @@ const CodeAssistantPage: React.FC = () => {
     } catch (error: any) {
       if (error.message?.includes("Insufficient balance")) {
         setError("Insufficient balance. Please top up to continue.");
+      } else if (error.message?.includes("exceeds 4MB limit")) {
+        setError("Conversation history is too large. Please start a new conversation or clear some messages.");
       } else {
         setError(error.message || "Failed to get response");
       }
@@ -183,6 +234,7 @@ const CodeAssistantPage: React.FC = () => {
     setMessages([]);
     setError("");
     setStreamingContent("");
+    setOptimizationInfo(null);
   };
 
   const copyToClipboard = async (text: string) => {
@@ -271,7 +323,7 @@ const CodeAssistantPage: React.FC = () => {
       }}
     >
       {isUser ? (
-        <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+        <Typography variant="body1\" sx={{ whiteSpace: "pre-wrap" }}>
           {content}
         </Typography>
       ) : (
@@ -452,6 +504,19 @@ const CodeAssistantPage: React.FC = () => {
           </Alert>
         )}
 
+        {optimizationInfo && (
+          <Alert
+            severity="info"
+            sx={{ mx: 3, mt: 2 }}
+            onClose={() => setOptimizationInfo(null)}
+          >
+            <Typography variant="body2">
+              <strong>Chat History Optimized:</strong> Reduced from {optimizationInfo.originalHistoryLength} to {optimizationInfo.optimizedHistoryLength} messages, 
+              saving {optimizationInfo.tokensSaved} tokens. {optimizationInfo.updatedChatsCount} messages were updated.
+            </Typography>
+          </Alert>
+        )}
+
         <Grid container sx={{ flexGrow: 1 }}>
           {/* Main content area */}
           <Grid
@@ -572,7 +637,7 @@ const CodeAssistantPage: React.FC = () => {
                       <>
                         {messages.map((message, index) => (
                           <Box
-                            key={index}
+                            key={`${message.chatId}-${index}`}
                             sx={{
                               display: "flex",
                               gap: 2,
