@@ -10,7 +10,7 @@ import {
   Chip,
   Divider,
 } from '@mui/material';
-import { Bot, User, Copy, Check, Edit, X, Save, MoreVertical } from 'lucide-react';
+import { Bot, User, Copy, Check, Edit, X, Save, MoreVertical, Repeat } from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../types';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -22,9 +22,12 @@ interface ChatMessageProps {
   loading?: boolean;
   darkMode?: boolean;
   onEditMessage?: (content: string) => void;
+  onRegenerateFromMessage?: () => void;
   model?: string;
   showHeader?: boolean;
   timestamp?: string;
+  messageIndex?: number;
+  canRegenerate?: boolean;
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -33,9 +36,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   loading = false,
   darkMode = false,
   onEditMessage,
+  onRegenerateFromMessage,
   model,
   showHeader = false,
   timestamp,
+  messageIndex,
+  canRegenerate = false,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -66,6 +72,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const handleCancel = () => {
     setIsEditing(false);
     setEditedContent(message.content);
+  };
+
+  const handleRegenerate = () => {
+    if (onRegenerateFromMessage) {
+      onRegenerateFromMessage();
+    }
   };
 
   return (
@@ -123,10 +135,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 {copied ? <Check size={14} /> : <Copy size={14} />}
               </IconButton>
             </Tooltip>
-            {message.role === 'user' && onEditMessage && (
+            {onEditMessage && (
               <Tooltip title="Edit message">
                 <IconButton size="small" onClick={handleEdit}>
                   <Edit size={14} />
+                </IconButton>
+              </Tooltip>
+            )}
+            {canRegenerate && message.role === 'assistant' && onRegenerateFromMessage && (
+              <Tooltip title="Regenerate response">
+                <IconButton size="small" onClick={handleRegenerate}>
+                  <Repeat size={14} />
                 </IconButton>
               </Tooltip>
             )}
@@ -165,7 +184,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             borderColor: 'divider',
           }}
         >
-          {!showHeader && message.role === 'assistant' && !isEditing && (
+          {/* Action buttons for non-header mode */}
+          {!showHeader && !isEditing && (
             <Box
               sx={{
                 position: 'absolute',
@@ -173,6 +193,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 right: 8,
                 display: 'flex',
                 gap: 0.5,
+                opacity: 0.7,
+                '&:hover': { opacity: 1 },
               }}
             >
               <Tooltip title={copied ? 'Copied!' : 'Copy to clipboard'}>
@@ -180,6 +202,29 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   {copied ? <Check size={16} /> : <Copy size={16} />}
                 </IconButton>
               </Tooltip>
+              {onEditMessage && (
+                <Tooltip title="Edit message">
+                  <IconButton 
+                    size="small" 
+                    onClick={handleEdit}
+                    sx={{ 
+                      color: message.role === 'user' ? 'white' : 'inherit',
+                      '&:hover': { 
+                        bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.1)' : 'action.hover' 
+                      } 
+                    }}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {canRegenerate && message.role === 'assistant' && onRegenerateFromMessage && (
+                <Tooltip title="Regenerate response">
+                  <IconButton size="small" onClick={handleRegenerate}>
+                    <Repeat size={16} />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Box>
           )}
 
@@ -192,7 +237,25 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 onChange={(e) => setEditedContent(e.target.value)}
                 variant="outlined"
                 size="small"
-                sx={{ mb: 2 }}
+                sx={{ 
+                  mb: 2,
+                  '& .MuiOutlinedInput-root': {
+                    bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.1)' : 'background.paper',
+                    '& fieldset': {
+                      borderColor: message.role === 'user' ? 'rgba(255,255,255,0.3)' : 'divider',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: message.role === 'user' ? 'rgba(255,255,255,0.5)' : 'primary.main',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: message.role === 'user' ? 'white' : 'primary.main',
+                    },
+                  },
+                  '& .MuiInputBase-input': {
+                    color: message.role === 'user' ? 'white' : 'text.primary',
+                  },
+                }}
+                placeholder={message.role === 'user' ? 'Edit your message...' : 'Edit assistant response...'}
               />
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                 <Button
@@ -200,6 +263,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   startIcon={<X size={16} />}
                   onClick={handleCancel}
                   variant="outlined"
+                  sx={{
+                    color: message.role === 'user' ? 'white' : 'text.primary',
+                    borderColor: message.role === 'user' ? 'rgba(255,255,255,0.5)' : 'divider',
+                    '&:hover': {
+                      borderColor: message.role === 'user' ? 'white' : 'primary.main',
+                      bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.1)' : 'action.hover',
+                    },
+                  }}
                 >
                   Cancel
                 </Button>
@@ -208,6 +279,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   startIcon={<Save size={16} />}
                   onClick={handleSave}
                   variant="contained"
+                  sx={{
+                    bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.2)' : 'primary.main',
+                    color: message.role === 'user' ? 'white' : 'white',
+                    '&:hover': {
+                      bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.3)' : 'primary.dark',
+                    },
+                  }}
                 >
                   Save
                 </Button>
@@ -215,27 +293,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             </Box>
           ) : message.role === 'user' ? (
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', pr: showHeader ? 0 : 4 }}>
+              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', pr: showHeader ? 0 : 6 }}>
                 {message.content}
               </Typography>
-              {!showHeader && onEditMessage && (
-                <Tooltip title="Edit message">
-                  <IconButton 
-                    size="small" 
-                    onClick={handleEdit}
-                    sx={{ 
-                      ml: 1, 
-                      color: 'white',
-                      '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } 
-                    }}
-                  >
-                    <Edit size={16} />
-                  </IconButton>
-                </Tooltip>
-              )}
             </Box>
           ) : (
-            <Box sx={{ pr: showHeader ? 0 : 5 }}>
+            <Box sx={{ pr: showHeader ? 0 : 6 }}>
               <ReactMarkdown
                 components={{
                   code({ node, inline, className, children, ...props }) {

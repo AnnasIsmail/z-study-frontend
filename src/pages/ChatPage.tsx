@@ -87,12 +87,9 @@ const ChatPage: React.FC = () => {
     setSelectedModelName(model?.name || modelId);
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || !selectedModel) return;
-
-    const userMessage: ChatMessageType = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
+  const sendMessage = async (messageContent: string, conversationId?: string) => {
+    const userMessage: ChatMessageType = { role: "user", content: messageContent };
+    
     setLoading(true);
     setStreamedResponse("");
     setError("");
@@ -101,7 +98,7 @@ const ChatPage: React.FC = () => {
       const stream = await chatCompletionStream({
         model: selectedModel,
         messages: [userMessage],
-        conversationId: selectedConversation?.conversationId,
+        conversationId: conversationId,
       });
 
       if (!stream) throw new Error("Failed to initialize stream");
@@ -176,6 +173,57 @@ const ChatPage: React.FC = () => {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || !selectedModel) return;
+
+    const userMessage: ChatMessageType = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    
+    await sendMessage(input, selectedConversation?.conversationId);
+  };
+
+  const handleEditMessage = (index: number, newContent: string) => {
+    // Update the message content
+    setMessages((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], content: newContent };
+      
+      // If editing a user message, remove all subsequent messages and regenerate
+      if (updated[index].role === 'user') {
+        const messagesUpToEdit = updated.slice(0, index + 1);
+        setMessages(messagesUpToEdit);
+        
+        // Regenerate response from this point
+        setTimeout(() => {
+          sendMessage(newContent, selectedConversation?.conversationId);
+        }, 100);
+        
+        return messagesUpToEdit;
+      }
+      
+      return updated;
+    });
+  };
+
+  const handleRegenerateFromMessage = (index: number) => {
+    // Find the last user message before or at this index
+    const messagesUpToRegenerate = messages.slice(0, index);
+    const lastUserMessageIndex = messagesUpToRegenerate.findLastIndex(msg => msg.role === 'user');
+    
+    if (lastUserMessageIndex !== -1) {
+      const lastUserMessage = messagesUpToRegenerate[lastUserMessageIndex];
+      const messagesUpToUser = messages.slice(0, lastUserMessageIndex + 1);
+      
+      setMessages(messagesUpToUser);
+      
+      // Regenerate response
+      setTimeout(() => {
+        sendMessage(lastUserMessage.content, selectedConversation?.conversationId);
+      }, 100);
     }
   };
 
@@ -451,6 +499,10 @@ const ChatPage: React.FC = () => {
                           model={message.role === 'assistant' ? selectedModelName : undefined}
                           showHeader={true}
                           timestamp={formatTimestamp(index)}
+                          messageIndex={index}
+                          onEditMessage={(newContent) => handleEditMessage(index, newContent)}
+                          onRegenerateFromMessage={() => handleRegenerateFromMessage(index)}
+                          canRegenerate={index === messages.length - 1 || messages[index + 1]?.role === 'assistant'}
                         />
                       ))}
 
