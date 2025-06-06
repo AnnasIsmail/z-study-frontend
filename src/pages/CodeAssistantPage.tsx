@@ -36,8 +36,7 @@ import ModelSelector from "../components/Chat/ModelSelector";
 import CodeBlock from "../components/Code/CodeBlock";
 import ChatHistorySidebar from "../components/Chat/ChatHistory";
 import { useAuth } from "../context/AuthContext";
-import { getModels, chatCompletionStream, summarizeChat } from "../services/llm";
-import { updateConversationTitle } from "../services/conversations";
+import { getModels, chatCompletionStream } from "../services/llm";
 import { LLMModel, ChatMessage, Conversation } from "../types";
 import { useNavigate } from "react-router-dom";
 
@@ -58,11 +57,6 @@ const CodeAssistantPage: React.FC = () => {
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null);
   const [selectedTab, setSelectedTab] = useState(0);
-  const [summarizing, setSummarizing] = useState(false);
-  const [pendingSummarization, setPendingSummarization] = useState<{
-    userMessage: string;
-    conversationId: string;
-  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -72,14 +66,6 @@ const CodeAssistantPage: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, streamingContent]);
-
-  // Effect to handle summarization after stream completes
-  useEffect(() => {
-    if (pendingSummarization && !loading) {
-      handleSummarization(pendingSummarization.userMessage, pendingSummarization.conversationId);
-      setPendingSummarization(null);
-    }
-  }, [loading, pendingSummarization]);
 
   const fetchModels = async () => {
     try {
@@ -99,41 +85,6 @@ const CodeAssistantPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const getFreeModel = () => {
-    // Find a free model for summarization
-    const freeModels = models.filter(model => 
-      model.id.includes('free') || 
-      model.pricing?.prompt === '0' ||
-      model.id.includes('llama-3.2-1b') ||
-      model.id.includes('gemma-2-2b')
-    );
-    
-    return freeModels.length > 0 ? freeModels[0].id : 'meta-llama/llama-3.2-1b-instruct:free';
-  };
-
-  const handleSummarization = async (userMessage: string, conversationId: string) => {
-    setSummarizing(true);
-    try {
-      const freeModel = getFreeModel();
-      const title = await summarizeChat(userMessage, freeModel);
-      
-      // Update conversation title via API
-      await updateConversationTitle(conversationId, title);
-      
-      // Update local state
-      if (selectedConversation) {
-        setSelectedConversation({
-          ...selectedConversation,
-          title: title
-        });
-      }
-    } catch (error) {
-      console.error("Failed to summarize and update conversation title:", error);
-    } finally {
-      setSummarizing(false);
-    }
-  };
-
   const handleSend = async () => {
     if (!input.trim() || !selectedModel) return;
 
@@ -141,9 +92,6 @@ const CodeAssistantPage: React.FC = () => {
       role: "user",
       content: input,
     };
-
-    const isFirstMessage = messages.length === 0 && !selectedConversation;
-    const currentInput = input; // Store input for summarization
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
@@ -170,7 +118,6 @@ const CodeAssistantPage: React.FC = () => {
       const decoder = new TextDecoder();
       let buffer = "";
       let accumulatedContent = "";
-      let newConversationId: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -181,14 +128,6 @@ const CodeAssistantPage: React.FC = () => {
             { role: "assistant", content: accumulatedContent },
           ]);
           setStreamingContent("");
-          
-          // Schedule summarization after stream completes if this is first message
-          if (isFirstMessage && newConversationId) {
-            setPendingSummarization({
-              userMessage: currentInput,
-              conversationId: newConversationId
-            });
-          }
           break;
         }
 
@@ -215,11 +154,6 @@ const CodeAssistantPage: React.FC = () => {
                 setStreamingContent(
                   (prev) => prev + data.choices[0].delta.content
                 );
-              }
-              if (data.conversation !== null) {
-                const conversation: Conversation = data.conversation;
-                newConversationId = conversation.conversationId;
-                setSelectedConversation(conversation);
               }
             } catch (e) {
               console.error("Error parsing JSON:", e);
@@ -249,8 +183,6 @@ const CodeAssistantPage: React.FC = () => {
     setMessages([]);
     setError("");
     setStreamingContent("");
-    setSelectedConversation(null);
-    setPendingSummarization(null);
   };
 
   const copyToClipboard = async (text: string) => {
@@ -460,12 +392,7 @@ const CodeAssistantPage: React.FC = () => {
             }}
           >
             <Terminal size={24} />
-            {selectedConversation ? selectedConversation.title : "Code Assistant"}
-            {summarizing && (
-              <Tooltip title="Creating conversation title...">
-                <CircularProgress size={16} sx={{ ml: 1 }} />
-              </Tooltip>
-            )}
+            Code Assistant
           </Typography>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -639,9 +566,6 @@ const CodeAssistantPage: React.FC = () => {
                         <Typography variant="body2">
                           Ask questions, get code examples, debug issues, and
                           more
-                        </Typography>
-                        <Typography variant="caption" sx={{ mt: 1, fontStyle: 'italic' }}>
-                          💡 Your first message will automatically create a conversation title using a free AI model
                         </Typography>
                       </Box>
                     ) : (

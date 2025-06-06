@@ -12,6 +12,7 @@ import {
   Tooltip,
   Divider,
   Grid,
+  Chip,
 } from '@mui/material';
 import { Send, RefreshCw, Bot, User, Coins, Copy, Check, Repeat } from 'lucide-react';
 import MainLayout from '../components/Layout/MainLayout';
@@ -19,8 +20,8 @@ import ModelSelector from '../components/Chat/ModelSelector';
 import ChatMessage from '../components/Chat/ChatMessage';
 import ChatHistorySidebar from '../components/Chat/ChatHistory';
 import { useAuth } from '../context/AuthContext';
-import { getModels, getAllModels, chatCompletionStream, summarizeChat } from "../services/llm";
-import { getChatHistory, updateConversationTitle } from "../services/conversations";
+import { getModels, getAllModels, chatCompletionStream } from "../services/llm";
+import { getChatHistory } from "../services/conversations";
 import {
   LLMModel,
   ChatMessage as ChatMessageType,
@@ -34,6 +35,7 @@ const ChatPage: React.FC = () => {
   const navigate = useNavigate();
   const [models, setModels] = useState<LLMModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
+  const [selectedModelName, setSelectedModelName] = useState<string>("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,11 +45,7 @@ const ChatPage: React.FC = () => {
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [summarizing, setSummarizing] = useState(false);
-  const [pendingSummarization, setPendingSummarization] = useState<{
-    userMessage: string;
-    conversationId: string;
-  } | null>(null);
+  const [refreshHistoryTrigger, setRefreshHistoryTrigger] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,14 +56,6 @@ const ChatPage: React.FC = () => {
     scrollToBottom();
   }, [messages, streamedResponse]);
 
-  // Effect to handle summarization after stream completes
-  useEffect(() => {
-    if (pendingSummarization && !loading) {
-      handleSummarization(pendingSummarization.userMessage, pendingSummarization.conversationId);
-      setPendingSummarization(null);
-    }
-  }, [loading, pendingSummarization]);
-
   const fetchModels = async () => {
     try {
       setLoadingModels(true);
@@ -75,7 +65,9 @@ const ChatPage: React.FC = () => {
 
       // Set default model if none selected
       if (response.data.models.length > 0 && !selectedModel) {
-        setSelectedModel(response.data.models[0].id);
+        const defaultModel = response.data.models[0];
+        setSelectedModel(defaultModel.id);
+        setSelectedModelName(defaultModel.name);
       }
     } catch (error) {
       setError("Failed to fetch models");
@@ -89,50 +81,15 @@ const ChatPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const getFreeModel = () => {
-    // Find a free model for summarization
-    const freeModels = models.filter(model => 
-      model.id.includes('free') || 
-      model.pricing?.prompt === '0' ||
-      model.id.includes('llama-3.2-1b') ||
-      model.id.includes('gemma-2-2b')
-    );
-    
-    return freeModels.length > 0 ? freeModels[0].id : 'meta-llama/llama-3.2-1b-instruct:free';
+  const handleModelChange = (modelId: string) => {
+    setSelectedModel(modelId);
+    const model = models.find(m => m.id === modelId);
+    setSelectedModelName(model?.name || modelId);
   };
 
-  const handleSummarization = async (userMessage: string, conversationId: string) => {
-    setSummarizing(true);
-    try {
-      const freeModel = getFreeModel();
-      const title = await summarizeChat(userMessage, freeModel);
-      
-      // Update conversation title via API
-      await updateConversationTitle(conversationId, title);
-      
-      // Update local state
-      if (selectedConversation) {
-        setSelectedConversation({
-          ...selectedConversation,
-          title: title
-        });
-      }
-    } catch (error) {
-      console.error("Failed to summarize and update conversation title:", error);
-    } finally {
-      setSummarizing(false);
-    }
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() || !selectedModel) return;
-
-    const userMessage: ChatMessageType = { role: "user", content: input };
-    const isFirstMessage = messages.length === 0 && !selectedConversation;
-    const currentInput = input; // Store input for summarization
+  const sendMessage = async (messageContent: string, conversationId?: string) => {
+    const userMessage: ChatMessageType = { role: "user", content: messageContent };
     
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
     setLoading(true);
     setStreamedResponse("");
     setError("");
@@ -141,7 +98,7 @@ const ChatPage: React.FC = () => {
       const stream = await chatCompletionStream({
         model: selectedModel,
         messages: [userMessage],
-        conversationId: selectedConversation?.conversationId,
+        conversationId: conversationId,
       });
 
       if (!stream) throw new Error("Failed to initialize stream");
@@ -150,7 +107,6 @@ const ChatPage: React.FC = () => {
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
       let accumulatedContent = "";
-      let newConversationId: string | null = null;
 
       const processStream = async () => {
         while (true) {
@@ -161,14 +117,8 @@ const ChatPage: React.FC = () => {
               { role: "assistant", content: accumulatedContent },
             ]);
             setStreamedResponse("");
-            
-            // Schedule summarization after stream completes if this is first message
-            if (isFirstMessage && newConversationId) {
-              setPendingSummarization({
-                userMessage: currentInput,
-                conversationId: newConversationId
-              });
-            }
+            // Trigger history refresh after successful completion
+            setRefreshHistoryTrigger(prev => prev + 1);
             break;
           }
 
@@ -200,9 +150,10 @@ const ChatPage: React.FC = () => {
                   }
                 }
                 if (data.conversation !== null) {
+                  const data = JSON.parse(jsonStr);
                   const conversation: Conversation = data.conversation;
                   console.log(conversation);
-                  newConversationId = conversation.conversationId;
+
                   setSelectedConversation(conversation);
                 }
               } catch (e) {
@@ -225,6 +176,57 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  const handleSend = async () => {
+    if (!input.trim() || !selectedModel) return;
+
+    const userMessage: ChatMessageType = { role: "user", content: input };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    
+    await sendMessage(input, selectedConversation?.conversationId);
+  };
+
+  const handleEditMessage = (index: number, newContent: string) => {
+    // Update the message content
+    setMessages((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], content: newContent };
+      
+      // If editing a user message, remove all subsequent messages and regenerate
+      if (updated[index].role === 'user') {
+        const messagesUpToEdit = updated.slice(0, index + 1);
+        setMessages(messagesUpToEdit);
+        
+        // Regenerate response from this point
+        setTimeout(() => {
+          sendMessage(newContent, selectedConversation?.conversationId);
+        }, 100);
+        
+        return messagesUpToEdit;
+      }
+      
+      return updated;
+    });
+  };
+
+  const handleRegenerateFromMessage = (index: number) => {
+    // Find the last user message before or at this index
+    const messagesUpToRegenerate = messages.slice(0, index);
+    const lastUserMessageIndex = messagesUpToRegenerate.findLastIndex(msg => msg.role === 'user');
+    
+    if (lastUserMessageIndex !== -1) {
+      const lastUserMessage = messagesUpToRegenerate[lastUserMessageIndex];
+      const messagesUpToUser = messages.slice(0, lastUserMessageIndex + 1);
+      
+      setMessages(messagesUpToUser);
+      
+      // Regenerate response
+      setTimeout(() => {
+        sendMessage(lastUserMessage.content, selectedConversation?.conversationId);
+      }, 100);
+    }
+  };
+
   const handleKeyPress = (event: React.KeyboardEvent) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -237,7 +239,6 @@ const ChatPage: React.FC = () => {
     setStreamedResponse("");
     setError("");
     setSelectedConversation(null);
-    setPendingSummarization(null);
   };
 
   const handleSelectConversation = async (conversation: Conversation) => {
@@ -264,6 +265,12 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  const formatTimestamp = (index: number) => {
+    const now = new Date();
+    const messageTime = new Date(now.getTime() - (messages.length - index) * 60000);
+    return messageTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
     <MainLayout hideFooter>
       <Box
@@ -285,12 +292,12 @@ const ChatPage: React.FC = () => {
               height: "100%",
               borderRight: "1px solid",
               borderColor: "divider",
-              scrollBehavior: "auto",
             }}
           >
             <ChatHistorySidebar
               onSelectConversation={handleSelectConversation}
               selectedConversationId={selectedConversation?.conversationId}
+              refreshTrigger={refreshHistoryTrigger}
             />
           </Grid>
 
@@ -306,66 +313,85 @@ const ChatPage: React.FC = () => {
               flexDirection: "column",
             }}
           >
+            {/* Header with model selector */}
             <Box
               sx={{
                 p: 3,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
                 borderBottom: "1px solid",
                 borderColor: "divider",
+                bgcolor: 'background.paper',
               }}
             >
-              <Typography
-                variant="h5"
-                component="h1"
-                sx={{
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                }}
-              >
-                <ChatHistoryXS
-                  onSelectConversation={handleSelectConversation}
-                  selectedConversationId={selectedConversation?.conversationId}
-                />
-                <Bot size={24} />
-
-                {selectedConversation
-                  ? selectedConversation.title
-                  : "AI Chat Assistant"}
-                
-                {summarizing && (
-                  <Tooltip title="Creating conversation title...">
-                    <CircularProgress size={16} sx={{ ml: 1 }} />
-                  </Tooltip>
-                )}
-              </Typography>
-
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography
-                  variant="body2"
-                  sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                  variant="h5"
+                  component="h1"
+                  sx={{
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
                 >
-                  <Coins size={16} />
-                  Balance:{" "}
-                  <Box
-                    component="span"
-                    sx={{ fontWeight: 600, color: "primary.main" }}
-                  >
-                    {user?.balance?.toLocaleString()} IDR
-                  </Box>
+                  <ChatHistoryXS
+                    onSelectConversation={handleSelectConversation}
+                    selectedConversationId={selectedConversation?.conversationId}
+                  />
+                  <Bot size={24} />
+                  {selectedConversation
+                    ? selectedConversation.title
+                    : "AI Chat Assistant"}
                 </Typography>
 
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  size="small"
-                  onClick={() => navigate("/topup")}
-                >
-                  Top Up
-                </Button>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                  >
+                    <Coins size={16} />
+                    Balance:{" "}
+                    <Box
+                      component="span"
+                      sx={{ fontWeight: 600, color: "primary.main" }}
+                    >
+                      {user?.balance?.toLocaleString()} IDR
+                    </Box>
+                  </Typography>
+
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    size="small"
+                    onClick={() => navigate("/topup")}
+                  >
+                    Top Up
+                  </Button>
+                </Box>
+              </Box>
+
+              {/* Model Selector */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 500, minWidth: 'fit-content' }}>
+                  AI Model:
+                </Typography>
+                <Box sx={{ maxWidth: 400, minWidth: 300 }}>
+                  <ModelSelector
+                    models={models}
+                    selectedModel={selectedModel}
+                    onChange={handleModelChange}
+                    loading={loadingModels}
+                    disabled={loading}
+                  />
+                </Box>
+                {selectedModelName && (
+                  <Chip
+                    label={`Using ${selectedModelName}`}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    sx={{ ml: 1 }}
+                  />
+                )}
               </Box>
             </Box>
 
@@ -414,9 +440,22 @@ const ChatPage: React.FC = () => {
                     overflowY: "auto",
                     display: "flex",
                     flexDirection: "column",
-                    gap: 2,
+                    gap: 3,
                     p: 2,
                     height: "100px",
+                    '&::-webkit-scrollbar': {
+                      width: '6px',
+                    },
+                    '&::-webkit-scrollbar-track': {
+                      bgcolor: 'transparent',
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      bgcolor: 'divider',
+                      borderRadius: '3px',
+                      '&:hover': {
+                        bgcolor: 'text.secondary',
+                      },
+                    },
                   }}
                 >
                   {loadingHistory ? (
@@ -450,14 +489,21 @@ const ChatPage: React.FC = () => {
                       <Typography variant="body2">
                         Choose a model and type your message to begin
                       </Typography>
-                      <Typography variant="caption" sx={{ mt: 1, fontStyle: 'italic' }}>
-                        💡 Your first message will automatically create a conversation title using a free AI model
-                      </Typography>
                     </Box>
                   ) : (
                     <>
                       {messages.map((message, index) => (
-                        <ChatMessage key={index} message={message} />
+                        <ChatMessage 
+                          key={index} 
+                          message={message}
+                          model={message.role === 'assistant' ? selectedModelName : undefined}
+                          showHeader={true}
+                          timestamp={formatTimestamp(index)}
+                          messageIndex={index}
+                          onEditMessage={(newContent) => handleEditMessage(index, newContent)}
+                          onRegenerateFromMessage={() => handleRegenerateFromMessage(index)}
+                          canRegenerate={index === messages.length - 1 || messages[index + 1]?.role === 'assistant'}
+                        />
                       ))}
 
                       {streamedResponse && (
@@ -468,6 +514,9 @@ const ChatPage: React.FC = () => {
                           }}
                           isStreaming={true}
                           loading={loading}
+                          model={selectedModelName}
+                          showHeader={true}
+                          timestamp="Now"
                         />
                       )}
                     </>
@@ -478,14 +527,6 @@ const ChatPage: React.FC = () => {
                 <Divider sx={{ my: 2 }} />
 
                 <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
-                  <ModelSelector
-                    models={models}
-                    selectedModel={selectedModel}
-                    onChange={setSelectedModel}
-                    loading={loadingModels}
-                    disabled={loading}
-                  />
-
                   <TextField
                     fullWidth
                     multiline

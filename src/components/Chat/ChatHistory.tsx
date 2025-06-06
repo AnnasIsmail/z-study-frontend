@@ -24,11 +24,13 @@ import { format } from 'date-fns';
 interface ChatHistorySidebarProps {
   onSelectConversation: (conversation: Conversation) => void;
   selectedConversationId?: string;
+  refreshTrigger?: number; // Add this prop to trigger refresh
 }
 
 const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
   onSelectConversation,
   selectedConversationId,
+  refreshTrigger,
 }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,6 +40,10 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    fetchConversations(true);
+  }, [refreshTrigger]); // Refresh when trigger changes
 
   useEffect(() => {
     fetchConversations();
@@ -94,7 +100,7 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
       );
       setDeleteDialogOpen(false);
       setConversationToDelete(null);
-      fetchConversations();
+      fetchConversations(true);
     } catch (err) {
       setError("Failed to delete conversation");
       console.error(err);
@@ -120,6 +126,7 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
         borderColor: "divider",
         display: "flex",
         flexDirection: "column",
+        bgcolor: 'background.paper',
       }}
     >
       <Box
@@ -130,6 +137,7 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
           alignItems: "center",
           borderBottom: "1px solid",
           borderColor: "divider",
+          bgcolor: 'background.paper',
         }}
       >
         <Typography variant="subtitle1" fontWeight={600}>
@@ -148,82 +156,109 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
         </Typography>
       )}
 
-      <List sx={{ flexGrow: 1, overflowY: "auto", px: 1 }}>
-        {conversations.length === 0 && !loading ? (
-          <Box sx={{ p: 2, textAlign: "center" }}>
-            <Typography variant="body2" color="text.secondary">
-              No conversations yet
-            </Typography>
-          </Box>
-        ) : (
-          conversations.map((conversation) => (
-            <ListItem
-              key={conversation.conversationId}
-              disablePadding
-              sx={{ mb: 0.5 }}
-            >
-              <ListItemButton
-                selected={
-                  selectedConversationId === conversation.conversationId
-                }
-                onClick={() => onSelectConversation(conversation)}
-                sx={{
-                  borderRadius: 1,
-                  "&.Mui-selected": {
-                    bgcolor: "action.selected",
-                  },
-                }}
+      <Box 
+        sx={{ 
+          flexGrow: 1, 
+          overflowY: "auto",
+          bgcolor: 'background.paper',
+          '&::-webkit-scrollbar': {
+            width: '6px',
+          },
+          '&::-webkit-scrollbar-track': {
+            bgcolor: 'transparent',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            bgcolor: 'divider',
+            borderRadius: '3px',
+            '&:hover': {
+              bgcolor: 'text.secondary',
+            },
+          },
+        }}
+      >
+        <List sx={{ px: 1, py: 0 }}>
+          {conversations.length === 0 && !loading ? (
+            <Box sx={{ p: 2, textAlign: "center" }}>
+              <Typography variant="body2" color="text.secondary">
+                No conversations yet
+              </Typography>
+            </Box>
+          ) : (
+            conversations.map((conversation) => (
+              <ListItem
+                key={conversation.conversationId}
+                disablePadding
+                sx={{ mb: 0.5 }}
               >
-                <ListItemText
-                  primary={conversation.title}
-                  secondary={formatDate(conversation.lastMessageAt)}
-                  primaryTypographyProps={{
-                    noWrap: true,
-                    variant: "body2",
-                    fontWeight:
-                      selectedConversationId === conversation.conversationId
-                        ? 600
-                        : 400,
+                <ListItemButton
+                  selected={
+                    selectedConversationId === conversation.conversationId
+                  }
+                  onClick={() => onSelectConversation(conversation)}
+                  sx={{
+                    borderRadius: 1,
+                    "&.Mui-selected": {
+                      bgcolor: "action.selected",
+                      '&:hover': {
+                        bgcolor: "action.selected",
+                      },
+                    },
+                    '&:hover': {
+                      bgcolor: "action.hover",
+                    },
                   }}
-                  secondaryTypographyProps={{
-                    variant: "caption",
-                    color: "text.secondary",
-                  }}
-                />
-                <Tooltip title="Delete conversation">
-                  <IconButton
-                    edge="end"
-                    size="small"
-                    onClick={(e) =>
-                      handleDeleteClick(conversation.conversationId, e)
-                    }
-                    sx={{
-                      opacity: 0.7,
-                      "&:hover": { opacity: 1 },
+                >
+                  <ListItemText
+                    primary={conversation.title}
+                    secondary={formatDate(conversation.lastMessageAt)}
+                    primaryTypographyProps={{
+                      noWrap: true,
+                      variant: "body2",
+                      fontWeight:
+                        selectedConversationId === conversation.conversationId
+                          ? 600
+                          : 400,
                     }}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </Tooltip>
-              </ListItemButton>
-            </ListItem>
-          ))
-        )}
+                    secondaryTypographyProps={{
+                      variant: "caption",
+                      color: "text.secondary",
+                    }}
+                  />
+                  <Tooltip title="Delete conversation">
+                    <IconButton
+                      edge="end"
+                      size="small"
+                      onClick={(e) =>
+                        handleDeleteClick(conversation.conversationId, e)
+                      }
+                      sx={{
+                        opacity: 0.7,
+                        "&:hover": { opacity: 1 },
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Tooltip>
+                </ListItemButton>
+              </ListItem>
+            ))
+          )}
 
-        {loading && (
-          <Box sx={{ display: "flex", justifyContent: "center", p: 2 }}>
-            <CircularProgress size={24} />
-          </Box>
-        )}
+          {loading && (
+            <Box sx={{ display: "flex", justifyContent: "center", p: 2 }}>
+              <CircularProgress size={24} />
+            </Box>
+          )}
 
-        {hasMore && !loading && (
-          <Box sx={{ textAlign: "center", p: 1 }}>
-            <Button size="small" onClick={handleLoadMore}>
-              Load more
-            </Button>
-          </Box>
-        )}
-      </List>
+          {hasMore && !loading && (
+            <Box sx={{ textAlign: "center", p: 1 }}>
+              <Button size="small" onClick={handleLoadMore}>
+                Load more
+              </Button>
+            </Box>
+          )}
+        </List>
+      </Box>
 
       {/* Delete Confirmation Dialog */}
       <Dialog
