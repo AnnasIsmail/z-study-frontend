@@ -12,6 +12,7 @@ import {
   Tooltip,
   Divider,
   Grid,
+  Chip,
 } from '@mui/material';
 import { Send, RefreshCw, Bot, User, Coins, Copy, Check, Repeat } from 'lucide-react';
 import MainLayout from '../components/Layout/MainLayout';
@@ -34,6 +35,7 @@ const ChatPage: React.FC = () => {
   const navigate = useNavigate();
   const [models, setModels] = useState<LLMModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
+  const [selectedModelName, setSelectedModelName] = useState<string>("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,6 +45,7 @@ const ChatPage: React.FC = () => {
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [refreshHistoryTrigger, setRefreshHistoryTrigger] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,7 +65,9 @@ const ChatPage: React.FC = () => {
 
       // Set default model if none selected
       if (response.data.models.length > 0 && !selectedModel) {
-        setSelectedModel(response.data.models[0].id);
+        const defaultModel = response.data.models[0];
+        setSelectedModel(defaultModel.id);
+        setSelectedModelName(defaultModel.name);
       }
     } catch (error) {
       setError("Failed to fetch models");
@@ -72,30 +77,14 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  // const fetchModelsForSelector = async () => {
-  //   try {
-  //     setLoadingModels(true);
-  //     // Get first page with high limit to show all available models
-  //     const response = await getModels({ limit: 1000, sort: 'name-asc' });
-  //     const allModels = Array.isArray(response.data.models)
-  //       ? response.data.models
-  //       : Object.values(response.data.models).flat();
-
-  //     setModels(allModels);
-
-  //     if (allModels.length > 0 && !selectedModel) {
-  //       setSelectedModel(allModels[0].id);
-  //     }
-  //   } catch (error) {
-  //     setError('Failed to fetch models');
-  //     console.error('Error fetching models:', error);
-  //   } finally {
-  //     setLoadingModels(false);
-  //   }
-  // };
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleModelChange = (modelId: string) => {
+    setSelectedModel(modelId);
+    const model = models.find(m => m.id === modelId);
+    setSelectedModelName(model?.name || modelId);
   };
 
   const handleSend = async () => {
@@ -111,7 +100,6 @@ const ChatPage: React.FC = () => {
     try {
       const stream = await chatCompletionStream({
         model: selectedModel,
-        // messages: [...messages, userMessage],
         messages: [userMessage],
         conversationId: selectedConversation?.conversationId,
       });
@@ -132,6 +120,8 @@ const ChatPage: React.FC = () => {
               { role: "assistant", content: accumulatedContent },
             ]);
             setStreamedResponse("");
+            // Trigger history refresh after successful completion
+            setRefreshHistoryTrigger(prev => prev + 1);
             break;
           }
 
@@ -227,6 +217,12 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  const formatTimestamp = (index: number) => {
+    const now = new Date();
+    const messageTime = new Date(now.getTime() - (messages.length - index) * 60000);
+    return messageTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
     <MainLayout hideFooter>
       <Box
@@ -248,12 +244,12 @@ const ChatPage: React.FC = () => {
               height: "100%",
               borderRight: "1px solid",
               borderColor: "divider",
-              scrollBehavior: "auto",
             }}
           >
             <ChatHistorySidebar
               onSelectConversation={handleSelectConversation}
               selectedConversationId={selectedConversation?.conversationId}
+              refreshTrigger={refreshHistoryTrigger}
             />
           </Grid>
 
@@ -269,60 +265,85 @@ const ChatPage: React.FC = () => {
               flexDirection: "column",
             }}
           >
+            {/* Header with model selector */}
             <Box
               sx={{
                 p: 3,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
                 borderBottom: "1px solid",
                 borderColor: "divider",
+                bgcolor: 'background.paper',
               }}
             >
-              <Typography
-                variant="h5"
-                component="h1"
-                sx={{
-                  fontWeight: 700,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                }}
-              >
-                <ChatHistoryXS
-                  onSelectConversation={handleSelectConversation}
-                  selectedConversationId={selectedConversation?.conversationId}
-                />
-                <Bot size={24} />
-
-                {selectedConversation
-                  ? selectedConversation.title
-                  : "AI Chat Assistant"}
-              </Typography>
-
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography
-                  variant="body2"
-                  sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                  variant="h5"
+                  component="h1"
+                  sx={{
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                  }}
                 >
-                  <Coins size={16} />
-                  Balance:{" "}
-                  <Box
-                    component="span"
-                    sx={{ fontWeight: 600, color: "primary.main" }}
-                  >
-                    {user?.balance?.toLocaleString()} IDR
-                  </Box>
+                  <ChatHistoryXS
+                    onSelectConversation={handleSelectConversation}
+                    selectedConversationId={selectedConversation?.conversationId}
+                  />
+                  <Bot size={24} />
+                  {selectedConversation
+                    ? selectedConversation.title
+                    : "AI Chat Assistant"}
                 </Typography>
 
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  size="small"
-                  onClick={() => navigate("/topup")}
-                >
-                  Top Up
-                </Button>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                  >
+                    <Coins size={16} />
+                    Balance:{" "}
+                    <Box
+                      component="span"
+                      sx={{ fontWeight: 600, color: "primary.main" }}
+                    >
+                      {user?.balance?.toLocaleString()} IDR
+                    </Box>
+                  </Typography>
+
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    size="small"
+                    onClick={() => navigate("/topup")}
+                  >
+                    Top Up
+                  </Button>
+                </Box>
+              </Box>
+
+              {/* Model Selector */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 500, minWidth: 'fit-content' }}>
+                  AI Model:
+                </Typography>
+                <Box sx={{ maxWidth: 400, minWidth: 300 }}>
+                  <ModelSelector
+                    models={models}
+                    selectedModel={selectedModel}
+                    onChange={handleModelChange}
+                    loading={loadingModels}
+                    disabled={loading}
+                  />
+                </Box>
+                {selectedModelName && (
+                  <Chip
+                    label={`Using ${selectedModelName}`}
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    sx={{ ml: 1 }}
+                  />
+                )}
               </Box>
             </Box>
 
@@ -371,9 +392,22 @@ const ChatPage: React.FC = () => {
                     overflowY: "auto",
                     display: "flex",
                     flexDirection: "column",
-                    gap: 2,
+                    gap: 3,
                     p: 2,
                     height: "100px",
+                    '&::-webkit-scrollbar': {
+                      width: '6px',
+                    },
+                    '&::-webkit-scrollbar-track': {
+                      bgcolor: 'transparent',
+                    },
+                    '&::-webkit-scrollbar-thumb': {
+                      bgcolor: 'divider',
+                      borderRadius: '3px',
+                      '&:hover': {
+                        bgcolor: 'text.secondary',
+                      },
+                    },
                   }}
                 >
                   {loadingHistory ? (
@@ -411,7 +445,13 @@ const ChatPage: React.FC = () => {
                   ) : (
                     <>
                       {messages.map((message, index) => (
-                        <ChatMessage key={index} message={message} />
+                        <ChatMessage 
+                          key={index} 
+                          message={message}
+                          model={message.role === 'assistant' ? selectedModelName : undefined}
+                          showHeader={true}
+                          timestamp={formatTimestamp(index)}
+                        />
                       ))}
 
                       {streamedResponse && (
@@ -422,6 +462,9 @@ const ChatPage: React.FC = () => {
                           }}
                           isStreaming={true}
                           loading={loading}
+                          model={selectedModelName}
+                          showHeader={true}
+                          timestamp="Now"
                         />
                       )}
                     </>
@@ -432,14 +475,6 @@ const ChatPage: React.FC = () => {
                 <Divider sx={{ my: 2 }} />
 
                 <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
-                  <ModelSelector
-                    models={models}
-                    selectedModel={selectedModel}
-                    onChange={setSelectedModel}
-                    loading={loadingModels}
-                    disabled={loading}
-                  />
-
                   <TextField
                     fullWidth
                     multiline

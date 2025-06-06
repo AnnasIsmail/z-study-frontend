@@ -1,4 +1,3 @@
-// components/chat/ModelSelector.tsx - Updated to work with new popup
 import React, { useState } from "react";
 import {
   Box,
@@ -59,15 +58,21 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
         sx={{
           justifyContent: "space-between",
           textTransform: "none",
-          py: 0.75,
-          borderRadius: 1.5,
+          py: 1,
+          px: 2,
+          borderRadius: 2,
           transition: "all 0.2s",
+          border: '2px solid',
+          borderColor: 'primary.main',
+          bgcolor: selectedModelDetails ? 'primary.main' : 'transparent',
+          color: selectedModelDetails ? 'white' : 'primary.main',
           "&:hover": {
-            backgroundColor: theme.palette.action.hover,
+            backgroundColor: selectedModelDetails ? 'primary.dark' : theme.palette.action.hover,
+            borderColor: 'primary.main',
           },
         }}
         endIcon={
-          loading ? <CircularProgress size={16} /> : <ChevronDown size={16} />
+          loading ? <CircularProgress size={16} color="inherit" /> : <ChevronDown size={16} />
         }
       >
         <Box sx={{ display: "flex", alignItems: "center", width: "100%" }}>
@@ -81,15 +86,20 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
               }}
             >
               <Box sx={{ display: "flex", alignItems: "center" }}>
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
                   {selectedModelDetails.name}
                 </Typography>
                 {supportsImages(selectedModelDetails) && (
                   <Chip
                     label="Image"
                     size="small"
-                    color="primary"
-                    sx={{ ml: 1, height: 20, fontSize: "0.6rem" }}
+                    sx={{ 
+                      ml: 1, 
+                      height: 20, 
+                      fontSize: "0.6rem",
+                      bgcolor: 'rgba(255,255,255,0.2)',
+                      color: 'inherit',
+                    }}
                   />
                 )}
               </Box>
@@ -97,8 +107,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
               <Box sx={{ display: "flex", alignItems: "center" }}>
                 <Typography
                   variant="caption"
-                  color="text.secondary"
-                  sx={{ mr: 1 }}
+                  sx={{ mr: 1, opacity: 0.8 }}
                 >
                   {((selectedModelDetails.context_length || 0) / 1000).toFixed(
                     0
@@ -106,12 +115,12 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
                   k
                 </Typography>
                 <Tooltip title="View model details">
-                  <Info size={14} color="#666" />
+                  <Info size={14} style={{ opacity: 0.8 }} />
                 </Tooltip>
               </Box>
             </Box>
           ) : (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{ opacity: 0.7 }}>
               {loading ? "Loading models..." : "Select a model"}
             </Typography>
           )}
