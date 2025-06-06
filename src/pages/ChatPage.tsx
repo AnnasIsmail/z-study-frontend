@@ -19,7 +19,7 @@ import ModelSelector from '../components/Chat/ModelSelector';
 import ChatMessage from '../components/Chat/ChatMessage';
 import ChatHistorySidebar from '../components/Chat/ChatHistory';
 import { useAuth } from '../context/AuthContext';
-import { getModels, getAllModels, chatCompletionStream } from "../services/llm";
+import { getModels, getAllModels, chatCompletionStream, summarizeChat } from "../services/llm";
 import { getChatHistory } from "../services/conversations";
 import {
   LLMModel,
@@ -43,6 +43,7 @@ const ChatPage: React.FC = () => {
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -72,46 +73,50 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  // const fetchModelsForSelector = async () => {
-  //   try {
-  //     setLoadingModels(true);
-  //     // Get first page with high limit to show all available models
-  //     const response = await getModels({ limit: 1000, sort: 'name-asc' });
-  //     const allModels = Array.isArray(response.data.models)
-  //       ? response.data.models
-  //       : Object.values(response.data.models).flat();
-
-  //     setModels(allModels);
-
-  //     if (allModels.length > 0 && !selectedModel) {
-  //       setSelectedModel(allModels[0].id);
-  //     }
-  //   } catch (error) {
-  //     setError('Failed to fetch models');
-  //     console.error('Error fetching models:', error);
-  //   } finally {
-  //     setLoadingModels(false);
-  //   }
-  // };
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const getFreeModel = () => {
+    // Find a free model for summarization
+    const freeModels = models.filter(model => 
+      model.id.includes('free') || 
+      model.pricing?.prompt === '0' ||
+      model.id.includes('llama-3.2-1b') ||
+      model.id.includes('gemma-2-2b')
+    );
+    
+    return freeModels.length > 0 ? freeModels[0].id : 'meta-llama/llama-3.2-1b-instruct:free';
   };
 
   const handleSend = async () => {
     if (!input.trim() || !selectedModel) return;
 
     const userMessage: ChatMessageType = { role: "user", content: input };
+    const isFirstMessage = messages.length === 0 && !selectedConversation;
+    
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
     setStreamedResponse("");
     setError("");
 
+    // If this is the first message, summarize it for the conversation title
+    if (isFirstMessage) {
+      setSummarizing(true);
+      try {
+        const freeModel = getFreeModel();
+        await summarizeChat(input, freeModel);
+      } catch (error) {
+        console.error("Failed to summarize chat:", error);
+      } finally {
+        setSummarizing(false);
+      }
+    }
+
     try {
       const stream = await chatCompletionStream({
         model: selectedModel,
-        // messages: [...messages, userMessage],
         messages: [userMessage],
         conversationId: selectedConversation?.conversationId,
       });
@@ -298,6 +303,12 @@ const ChatPage: React.FC = () => {
                 {selectedConversation
                   ? selectedConversation.title
                   : "AI Chat Assistant"}
+                
+                {summarizing && (
+                  <Tooltip title="Creating conversation title...">
+                    <CircularProgress size={16} sx={{ ml: 1 }} />
+                  </Tooltip>
+                )}
               </Typography>
 
               <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -406,6 +417,9 @@ const ChatPage: React.FC = () => {
                       </Typography>
                       <Typography variant="body2">
                         Choose a model and type your message to begin
+                      </Typography>
+                      <Typography variant="caption" sx={{ mt: 1, fontStyle: 'italic' }}>
+                        💡 Your first message will automatically create a conversation title using a free AI model
                       </Typography>
                     </Box>
                   ) : (

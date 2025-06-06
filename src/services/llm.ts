@@ -71,6 +71,54 @@ export const chatCompletionStream = async (
   return response.body!;
 };
 
+// New function for chat summarization
+export const summarizeChat = async (
+  userMessage: string,
+  freeModel?: string
+): Promise<string> => {
+  try {
+    const token = localStorage.getItem("token");
+    
+    // Use a free model for summarization (you can specify which model to use)
+    const summarizeRequest = {
+      model: freeModel || "meta-llama/llama-3.2-1b-instruct:free", // Default free model
+      messages: [
+        {
+          role: "system",
+          content: "You are a helpful assistant that creates short, descriptive titles for conversations. Create a concise title (maximum 6 words) that captures the main topic or question from the user's message. Do not use quotes or special characters."
+        },
+        {
+          role: "user", 
+          content: `Create a short title for this conversation based on this message: "${userMessage}"`
+        }
+      ],
+      max_tokens: 20,
+      temperature: 0.3
+    };
+
+    const response = await fetch(`${api.defaults.baseURL}/chat/completion`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(summarizeRequest),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to summarize chat");
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content?.trim() || "New Conversation";
+  } catch (error) {
+    console.error("Error summarizing chat:", error);
+    // Fallback: create a simple title from the first few words
+    const words = userMessage.split(' ').slice(0, 4).join(' ');
+    return words.length > 30 ? words.substring(0, 30) + '...' : words;
+  }
+};
+
 export const processFileStream = async (
   request: FileProcessRequest
 ): Promise<ReadableStream<Uint8Array>> => {
