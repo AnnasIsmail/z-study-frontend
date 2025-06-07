@@ -89,8 +89,34 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         maxWidth: '85%',
         alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
         width: '100%',
+        position: 'relative',
       }}
     >
+      {/* Edit indicator */}
+      {message.updated && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: -8,
+            right: 8,
+            zIndex: 2,
+          }}
+        >
+          <Chip
+            label="Edited"
+            size="small"
+            color="warning"
+            sx={{ 
+              fontSize: '0.6rem',
+              height: 16,
+              '& .MuiChip-label': {
+                px: 1,
+              }
+            }}
+          />
+        </Box>
+      )}
+
       {/* Chat Header */}
       {showHeader && (
         <Box
