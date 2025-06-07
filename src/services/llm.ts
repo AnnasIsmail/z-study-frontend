@@ -49,32 +49,60 @@ export const getAllModels = async (): Promise<{
   }
 };
 
-// Helper function to calculate request size
+// Helper function to calculate request size in bytes
 const calculateRequestSize = (request: StreamRequest): number => {
   return new Blob([JSON.stringify(request)]).size;
 };
 
-// Helper function to optimize chat history if request is too large
-const optimizeChatHistory = (chatHistory: ChatMessage[], maxSize: number): ChatMessage[] => {
-  if (!chatHistory || chatHistory.length === 0) return [];
+// Helper function to build complete chat history up to 4MB limit
+const buildOptimalChatHistory = (
+  messages: ChatMessage[], 
+  newUserMessage: ChatMessage,
+  baseRequest: Omit<StreamRequest, 'chatHistory'>,
+  maxSize: number = 4 * 1024 * 1024 // 4MB
+): { chatHistory: ChatMessage[], optimizationInfo?: any } => {
   
-  // Start with the most recent messages and work backwards
-  const optimized: ChatMessage[] = [];
+  // Calculate base request size without chat history
+  const baseRequestSize = calculateRequestSize({
+    ...baseRequest,
+    chatHistory: []
+  });
+  
+  // Leave some buffer space (100KB) for response overhead
+  const availableSpace = maxSize - baseRequestSize - (100 * 1024);
+  
+  if (availableSpace <= 0) {
+    throw new Error("Base request is too large, cannot include any chat history");
+  }
+  
+  // Start with empty history and add messages from most recent backwards
+  const optimizedHistory: ChatMessage[] = [];
   let currentSize = 0;
+  let originalLength = messages.length;
   
-  for (let i = chatHistory.length - 1; i >= 0; i--) {
-    const message = chatHistory[i];
+  // Add messages from newest to oldest until we hit the size limit
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
     const messageSize = new Blob([JSON.stringify(message)]).size;
     
-    if (currentSize + messageSize > maxSize) {
+    // Check if adding this message would exceed the limit
+    if (currentSize + messageSize > availableSpace) {
       break;
     }
     
-    optimized.unshift(message);
+    optimizedHistory.unshift(message);
     currentSize += messageSize;
   }
   
-  return optimized;
+  // Calculate optimization info
+  const optimizationInfo = originalLength > optimizedHistory.length ? {
+    originalHistoryLength: originalLength,
+    optimizedHistoryLength: optimizedHistory.length,
+    tokensSaved: Math.round((originalLength - optimizedHistory.length) * 100), // Rough estimate
+    updatedChatsCount: optimizedHistory.filter(msg => msg.updated).length
+  } : undefined;
+  
+  return { chatHistory: optimizedHistory, optimizationInfo };
 };
 
 export const chatCompletionStream = async (
@@ -97,39 +125,41 @@ export const chatCompletionStream = async (
     }
   }
 
-  // Prepare the request with the new structure
-  const streamRequest: StreamRequest = {
+  // Prepare base request without chat history
+  const baseRequest = {
     model: request.model,
     messages: request.messages,
     max_tokens: maxTokens,
     conversationId: request.conversationId,
-    chatHistory: request.chatHistory || []
   };
 
-  // Check request size (4MB limit)
-  const MAX_REQUEST_SIZE = 4 * 1024 * 1024; // 4MB in bytes
-  let requestSize = calculateRequestSize(streamRequest);
+  // Build optimal chat history that fits within 4MB limit
+  const allMessages = request.chatHistory || [];
+  const { chatHistory, optimizationInfo } = buildOptimalChatHistory(
+    allMessages,
+    request.messages[0], // Assuming the first message is the new user message
+    baseRequest
+  );
+
+  // Create final request
+  const streamRequest: StreamRequest = {
+    ...baseRequest,
+    chatHistory: chatHistory
+  };
+
+  // Final size check
+  const finalSize = calculateRequestSize(streamRequest);
+  const MAX_REQUEST_SIZE = 4 * 1024 * 1024; // 4MB
   
-  // If request is too large, optimize chat history
-  if (requestSize > MAX_REQUEST_SIZE) {
-    console.warn(`Request size (${(requestSize / 1024 / 1024).toFixed(2)}MB) exceeds 4MB limit. Optimizing chat history...`);
-    
-    // Calculate available space for chat history (leaving room for other fields)
-    const baseRequestSize = calculateRequestSize({
-      ...streamRequest,
-      chatHistory: []
-    });
-    const availableSpace = MAX_REQUEST_SIZE - baseRequestSize - (100 * 1024); // Leave 100KB buffer
-    
-    streamRequest.chatHistory = optimizeChatHistory(streamRequest.chatHistory || [], availableSpace);
-    requestSize = calculateRequestSize(streamRequest);
-    
-    console.log(`Optimized request size: ${(requestSize / 1024 / 1024).toFixed(2)}MB`);
+  if (finalSize > MAX_REQUEST_SIZE) {
+    throw new Error(`Request size (${(finalSize / 1024 / 1024).toFixed(2)}MB) exceeds 4MB limit. Please start a new conversation.`);
   }
 
-  // Final check
-  if (requestSize > MAX_REQUEST_SIZE) {
-    throw new Error(`Request size (${(requestSize / 1024 / 1024).toFixed(2)}MB) still exceeds 4MB limit after optimization. Please reduce the conversation history.`);
+  console.log(`Request size: ${(finalSize / 1024 / 1024).toFixed(2)}MB, Chat history: ${chatHistory.length} messages`);
+  
+  // Store optimization info to be included in response
+  if (optimizationInfo) {
+    console.log('Chat history optimized:', optimizationInfo);
   }
 
   const response = await fetch(`${api.defaults.baseURL}/chat/stream`, {

@@ -103,18 +103,20 @@ const ChatPage: React.FC = () => {
     setOptimizationInfo(null);
 
     try {
-      // Prepare chat history with updated flags
-      const chatHistory = editedMessages || messages.map((msg, index) => ({
+      // Use all current messages as chat history (including edited ones)
+      const currentChatHistory = editedMessages || messages.map((msg, index) => ({
         ...msg,
         chatId: msg.chatId || `msg-${index}`,
         updated: msg.updated || false
       }));
 
+      console.log(`Sending message with ${currentChatHistory.length} messages in chat history`);
+
       const stream = await chatCompletionStream({
         model: selectedModel,
         messages: [userMessage],
         conversationId: conversationId,
-        chatHistory: chatHistory,
+        chatHistory: currentChatHistory, // Send ALL chat history
       });
 
       if (!stream) throw new Error("Failed to initialize stream");
@@ -143,7 +145,7 @@ const ChatPage: React.FC = () => {
             // Show optimization info if available
             if (streamResponseData.optimizationInfo) {
               setOptimizationInfo(streamResponseData.optimizationInfo);
-              setTimeout(() => setOptimizationInfo(null), 5000); // Hide after 5 seconds
+              setTimeout(() => setOptimizationInfo(null), 8000); // Hide after 8 seconds
             }
             
             // Trigger history refresh after successful completion
@@ -507,8 +509,8 @@ const ChatPage: React.FC = () => {
                 onClose={() => setOptimizationInfo(null)}
               >
                 <Typography variant="body2">
-                  <strong>Chat History Optimized:</strong> Reduced from {optimizationInfo.originalHistoryLength} to {optimizationInfo.optimizedHistoryLength} messages, 
-                  saving {optimizationInfo.tokensSaved} tokens. {optimizationInfo.updatedChatsCount} messages were updated.
+                  <strong>Chat History Optimized:</strong> Included {optimizationInfo.optimizedHistoryLength} of {optimizationInfo.originalHistoryLength} messages 
+                  to stay within 4MB limit. {optimizationInfo.updatedChatsCount} messages were marked as updated.
                 </Typography>
               </Alert>
             )}
@@ -587,6 +589,11 @@ const ChatPage: React.FC = () => {
                       <Typography variant="body2">
                         Choose a model and type your message to begin
                       </Typography>
+                      {messages.length > 0 && (
+                        <Typography variant="caption" color="primary.main">
+                          {messages.length} messages in history (will be included in next request)
+                        </Typography>
+                      )}
                     </Box>
                   ) : (
                     <>
@@ -637,6 +644,7 @@ const ChatPage: React.FC = () => {
                     placeholder="Type your message..."
                     disabled={loading || !selectedModel}
                     sx={{ flexGrow: 1 }}
+                    helperText={messages.length > 0 ? `${messages.length} messages in history` : undefined}
                   />
 
                   <Tooltip title="Clear chat">

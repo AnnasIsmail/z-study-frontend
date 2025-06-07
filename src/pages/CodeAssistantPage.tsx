@@ -112,17 +112,20 @@ const CodeAssistantPage: React.FC = () => {
         updated: false
       };
 
-      const chatHistory = [systemMessage, ...messages.map((msg, index) => ({
+      // Include ALL current messages as chat history
+      const currentChatHistory = [systemMessage, ...messages.map((msg, index) => ({
         ...msg,
         chatId: msg.chatId || `msg-${index}`,
         updated: msg.updated || false
       }))];
 
+      console.log(`Sending code assistant message with ${currentChatHistory.length} messages in chat history`);
+
       const response = await chatCompletionStream({
         model: selectedModel,
         messages: [userMessage],
         conversationId: selectedConversation?.conversationId,
-        chatHistory: chatHistory,
+        chatHistory: currentChatHistory, // Send ALL chat history including system message
       });
 
       const reader = response.getReader();
@@ -148,7 +151,7 @@ const CodeAssistantPage: React.FC = () => {
           // Show optimization info if available
           if (streamResponseData.optimizationInfo) {
             setOptimizationInfo(streamResponseData.optimizationInfo);
-            setTimeout(() => setOptimizationInfo(null), 5000);
+            setTimeout(() => setOptimizationInfo(null), 8000);
           }
           
           break;
@@ -511,8 +514,8 @@ const CodeAssistantPage: React.FC = () => {
             onClose={() => setOptimizationInfo(null)}
           >
             <Typography variant="body2">
-              <strong>Chat History Optimized:</strong> Reduced from {optimizationInfo.originalHistoryLength} to {optimizationInfo.optimizedHistoryLength} messages, 
-              saving {optimizationInfo.tokensSaved} tokens. {optimizationInfo.updatedChatsCount} messages were updated.
+              <strong>Chat History Optimized:</strong> Included {optimizationInfo.optimizedHistoryLength} of {optimizationInfo.originalHistoryLength} messages 
+              to stay within 4MB limit. {optimizationInfo.updatedChatsCount} messages were marked as updated.
             </Typography>
           </Alert>
         )}
@@ -744,6 +747,7 @@ const CodeAssistantPage: React.FC = () => {
                       placeholder="Ask for code examples, debugging help, or programming questions..."
                       disabled={loading || !selectedModel}
                       sx={{ flexGrow: 1 }}
+                      helperText={messages.length > 0 ? `${messages.length} messages in history` : undefined}
                     />
 
                     <Tooltip title="Clear chat">
