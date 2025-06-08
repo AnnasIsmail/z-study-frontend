@@ -194,12 +194,10 @@ export interface ChatHistoryResponse {
 
 export interface ConversationChatsResponse {
   success: boolean;
-  data: {
-    results: ChatMessage[];
-    limit: string;
-    totalResults: number;
-    hasMore: boolean;
-  };
+  results: ChatMessage[];
+  limit: string;
+  totalResults: number;
+  hasMore: boolean;
 }
 
 export interface StreamRequest {
@@ -352,4 +350,10 @@ export interface ModelsResponse {
   models: LLMModel[] | Record<string, LLMModel[]>;
   pagination: ModelPagination;
   filters: ModelFilters;
+}
+
+export interface LLMModelMarketing {
+  id: string;
+  name: string;
+  description: string;
 }

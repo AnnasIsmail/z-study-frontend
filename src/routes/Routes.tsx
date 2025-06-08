@@ -13,13 +13,21 @@ import ProfilePage from '../pages/ProfilePage';
 import ChatPage from "../pages/ChatPage";
 import TopupPage from "../pages/TopupPage";
 import CodeAssistantPage from "../pages/CodeAssistantPage";
+import MarketingPage from "../pages/MarketingPage";
 
 const AppRoutes: React.FC = () => {
   const { loading } = useAuth();
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "100vh",
+        }}
+      >
         <CircularProgress />
       </Box>
     );
@@ -29,7 +37,7 @@ const AppRoutes: React.FC = () => {
     <BrowserRouter>
       <Routes>
         {/* Public routes */}
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<MarketingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
