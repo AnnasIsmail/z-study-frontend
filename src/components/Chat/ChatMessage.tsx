@@ -9,25 +9,53 @@ import {
   Button,
   Chip,
   Divider,
+  Menu,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemButton,
+  Badge,
 } from '@mui/material';
-import { Bot, User, Copy, Check, Edit, X, Save, MoreVertical, Repeat } from 'lucide-react';
+import { 
+  Bot, 
+  User, 
+  Copy, 
+  Check, 
+  Edit, 
+  X, 
+  Save, 
+  MoreVertical, 
+  Repeat, 
+  History,
+  GitBranch,
+  Clock
+} from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../types';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { format } from 'date-fns';
 
 interface ChatMessageProps {
   message: ChatMessageType;
   isStreaming?: boolean;
   loading?: boolean;
   darkMode?: boolean;
-  onEditMessage?: (content: string) => void;
-  onRegenerateFromMessage?: () => void;
+  onEditMessage?: (content: string, model: string) => void;
+  onRegenerateFromMessage?: (model: string) => void;
+  onSwitchVersion?: (versionNumber: number) => void;
+  onViewVersions?: () => void;
   model?: string;
   showHeader?: boolean;
   timestamp?: string;
   messageIndex?: number;
   canRegenerate?: boolean;
+  availableModels?: Array<{ id: string; name: string }>;
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -37,15 +65,22 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   darkMode = false,
   onEditMessage,
   onRegenerateFromMessage,
+  onSwitchVersion,
+  onViewVersions,
   model,
   showHeader = false,
   timestamp,
   messageIndex,
   canRegenerate = false,
+  availableModels = [],
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(message.content);
+  const [selectedModel, setSelectedModel] = useState(model || '');
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
+  const [regenerateMenuAnchorEl, setRegenerateMenuAnchorEl] = useState<null | HTMLElement>(null);
 
   const copyToClipboard = async () => {
     try {
@@ -60,11 +95,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const handleEdit = () => {
     setIsEditing(true);
     setEditedContent(message.content);
+    setMenuAnchorEl(null);
   };
 
   const handleSave = () => {
-    if (onEditMessage && editedContent !== message.content) {
-      onEditMessage(editedContent);
+    if (onEditMessage && editedContent !== message.content && selectedModel) {
+      onEditMessage(editedContent, selectedModel);
     }
     setIsEditing(false);
   };
@@ -74,9 +110,51 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     setEditedContent(message.content);
   };
 
-  const handleRegenerate = () => {
+  const handleRegenerate = (modelId?: string) => {
     if (onRegenerateFromMessage) {
-      onRegenerateFromMessage();
+      onRegenerateFromMessage(modelId || selectedModel || model || '');
+    }
+    setRegenerateMenuAnchorEl(null);
+  };
+
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setMenuAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null);
+  };
+
+  const handleRegenerateMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+    setRegenerateMenuAnchorEl(event.currentTarget);
+  };
+
+  const handleRegenerateMenuClose = () => {
+    setRegenerateMenuAnchorEl(null);
+  };
+
+  const handleViewVersions = () => {
+    setVersionsDialogOpen(true);
+    setMenuAnchorEl(null);
+    if (onViewVersions) {
+      onViewVersions();
+    }
+  };
+
+  const handleSwitchVersion = (versionNumber: number) => {
+    if (onSwitchVersion) {
+      onSwitchVersion(versionNumber);
+    }
+    setVersionsDialogOpen(false);
+  };
+
+  const formatTimestamp = (dateString?: string) => {
+    if (!dateString) return timestamp;
+    try {
+      return format(new Date(dateString), 'MMM d, HH:mm');
+    } catch {
+      return timestamp;
     }
   };
 
@@ -92,16 +170,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         position: 'relative',
       }}
     >
-      {/* Edit indicator */}
-      {message.updated && (
-        <Box
-          sx={{
-            position: 'absolute',
-            top: -8,
-            right: 8,
-            zIndex: 2,
-          }}
-        >
+      {/* Version and Edit indicators */}
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.5 }}>
+        {message.isEdited && (
           <Chip
             label="Edited"
             size="small"
@@ -114,8 +185,24 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               }
             }}
           />
-        </Box>
-      )}
+        )}
+        {message.hasMultipleVersions && (
+          <Chip
+            icon={<GitBranch size={12} />}
+            label={`v${message.versionNumber}/${message.totalVersions}`}
+            size="small"
+            color="info"
+            variant="outlined"
+            sx={{ 
+              fontSize: '0.6rem',
+              height: 16,
+              '& .MuiChip-label': {
+                px: 1,
+              }
+            }}
+          />
+        )}
+      </Box>
 
       {/* Chat Header */}
       {showHeader && (
@@ -151,30 +238,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             )}
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            {timestamp && (
-              <Typography variant="caption\" color="text.secondary">
-                {timestamp}
-              </Typography>
-            )}
-            <Tooltip title={copied ? 'Copied!' : 'Copy message'}>
-              <IconButton size="small" onClick={copyToClipboard}>
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-              </IconButton>
-            </Tooltip>
-            {onEditMessage && (
-              <Tooltip title="Edit message">
-                <IconButton size="small" onClick={handleEdit}>
-                  <Edit size={14} />
-                </IconButton>
-              </Tooltip>
-            )}
-            {canRegenerate && message.role === 'assistant' && onRegenerateFromMessage && (
-              <Tooltip title="Regenerate response">
-                <IconButton size="small" onClick={handleRegenerate}>
-                  <Repeat size={14} />
-                </IconButton>
-              </Tooltip>
-            )}
+            <Typography variant="caption" color="text.secondary">
+              {formatTimestamp(message.createdAt)}
+            </Typography>
+            <IconButton size="small" onClick={handleMenuOpen}>
+              <MoreVertical size={14} />
+            </IconButton>
           </Box>
         </Box>
       )}
@@ -228,29 +297,20 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   {copied ? <Check size={16} /> : <Copy size={16} />}
                 </IconButton>
               </Tooltip>
-              {onEditMessage && (
-                <Tooltip title="Edit message">
-                  <IconButton 
-                    size="small" 
-                    onClick={handleEdit}
-                    sx={{ 
-                      color: message.role === 'user' ? 'white' : 'inherit',
-                      '&:hover': { 
-                        bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.1)' : 'action.hover' 
-                      } 
-                    }}
-                  >
-                    <Edit size={16} />
+              
+              {message.hasMultipleVersions && (
+                <Tooltip title="View versions">
+                  <IconButton size="small" onClick={handleViewVersions}>
+                    <Badge badgeContent={message.totalVersions} color="primary">
+                      <History size={16} />
+                    </Badge>
                   </IconButton>
                 </Tooltip>
               )}
-              {canRegenerate && message.role === 'assistant' && onRegenerateFromMessage && (
-                <Tooltip title="Regenerate response">
-                  <IconButton size="small" onClick={handleRegenerate}>
-                    <Repeat size={16} />
-                  </IconButton>
-                </Tooltip>
-              )}
+
+              <IconButton size="small" onClick={handleMenuOpen}>
+                <MoreVertical size={16} />
+              </IconButton>
             </Box>
           )}
 
@@ -283,6 +343,29 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 }}
                 placeholder={message.role === 'user' ? 'Edit your message...' : 'Edit assistant response...'}
               />
+              
+              {message.role === 'user' && availableModels.length > 0 && (
+                <TextField
+                  select
+                  fullWidth
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  label="Model for regeneration"
+                  size="small"
+                  sx={{ mb: 2 }}
+                  SelectProps={{
+                    native: true,
+                  }}
+                >
+                  <option value="">Select model</option>
+                  {availableModels.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </TextField>
+              )}
+              
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                 <Button
                   size="small"
@@ -305,6 +388,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   startIcon={<Save size={16} />}
                   onClick={handleSave}
                   variant="contained"
+                  disabled={!editedContent.trim() || (message.role === 'user' && !selectedModel)}
                   sx={{
                     bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.2)' : 'primary.main',
                     color: message.role === 'user' ? 'white' : 'white',
@@ -313,7 +397,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                     },
                   }}
                 >
-                  Save
+                  Save & Regenerate
                 </Button>
               </Box>
             </Box>
@@ -360,6 +444,135 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           )}
         </Paper>
       </Box>
+
+      {/* Context Menu */}
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleMenuClose}
+        PaperProps={{
+          sx: { minWidth: 180 }
+        }}
+      >
+        <MenuItem onClick={copyToClipboard}>
+          <Copy size={16} style={{ marginRight: 8 }} />
+          Copy
+        </MenuItem>
+        
+        {onEditMessage && (
+          <MenuItem onClick={handleEdit}>
+            <Edit size={16} style={{ marginRight: 8 }} />
+            Edit
+          </MenuItem>
+        )}
+        
+        {message.hasMultipleVersions && (
+          <MenuItem onClick={handleViewVersions}>
+            <History size={16} style={{ marginRight: 8 }} />
+            View Versions ({message.totalVersions})
+          </MenuItem>
+        )}
+        
+        {canRegenerate && message.role === 'assistant' && onRegenerateFromMessage && (
+          <MenuItem onClick={handleRegenerateMenuOpen}>
+            <Repeat size={16} style={{ marginRight: 8 }} />
+            Regenerate
+          </MenuItem>
+        )}
+      </Menu>
+
+      {/* Regenerate Model Selection Menu */}
+      <Menu
+        anchorEl={regenerateMenuAnchorEl}
+        open={Boolean(regenerateMenuAnchorEl)}
+        onClose={handleRegenerateMenuClose}
+        PaperProps={{
+          sx: { minWidth: 200 }
+        }}
+      >
+        <MenuItem onClick={() => handleRegenerate()}>
+          <Repeat size={16} style={{ marginRight: 8 }} />
+          Same Model
+        </MenuItem>
+        <Divider />
+        {availableModels.map((modelOption) => (
+          <MenuItem key={modelOption.id} onClick={() => handleRegenerate(modelOption.id)}>
+            <Bot size={16} style={{ marginRight: 8 }} />
+            {modelOption.name}
+          </MenuItem>
+        ))}
+      </Menu>
+
+      {/* Versions Dialog */}
+      <Dialog
+        open={versionsDialogOpen}
+        onClose={() => setVersionsDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <GitBranch size={20} />
+            Message Versions
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {message.availableVersions && message.availableVersions.length > 0 ? (
+            <List>
+              {message.availableVersions.map((version) => (
+                <ListItem key={version.versionId} disablePadding>
+                  <ListItemButton
+                    selected={version.versionNumber === message.versionNumber}
+                    onClick={() => handleSwitchVersion(version.versionNumber)}
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            Version {version.versionNumber}
+                          </Typography>
+                          {version.versionNumber === message.versionNumber && (
+                            <Chip label="Current" size="small" color="primary" />
+                          )}
+                        </Box>
+                      }
+                      secondary={
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">
+                            <Clock size={12} style={{ marginRight: 4 }} />
+                            {formatTimestamp(version.createdAt)}
+                          </Typography>
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              mt: 0.5,
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            {version.content}
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
+          ) : (
+            <Typography color="text.secondary" align="center" sx={{ py: 2 }}>
+              No versions available
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVersionsDialogOpen(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

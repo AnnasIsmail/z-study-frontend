@@ -101,17 +101,39 @@ export interface LLMModel {
 }
 
 export interface ChatMessage {
+  chatId?: string;
   role: "user" | "assistant" | "system";
   content: string;
-  chatId?: string;
-  updated?: boolean;
+  messageIndex?: number;
+  isActive?: boolean;
+  isEdited?: boolean;
+  editHistory?: Array<{
+    content: string;
+    editedAt: string;
+  }>;
+  parentChatId?: string;
+  childChatIds?: string[];
+  versionId?: string;
+  originalChatId?: string;
+  versionNumber?: number;
+  isCurrentVersion?: boolean;
+  hasMultipleVersions?: boolean;
+  totalVersions?: number;
+  availableVersions?: Array<{
+    versionNumber: number;
+    versionId: string;
+    content: string;
+    createdAt: string;
+  }>;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Conversation {
   conversationId: string;
   title: string;
   lastMessageAt: string;
-  conversationCreatedAt: string;
+  createdAt: string;
 }
 
 export interface ChatHistoryItem {
@@ -154,6 +176,15 @@ export interface ChatHistoryResponse {
   limit: number;
   totalPages: number;
   totalResults: number;
+}
+
+export interface ConversationChatsResponse {
+  success: boolean;
+  data: {
+    results: ChatMessage[];
+    lastEvaluatedKey?: string;
+    hasMore: boolean;
+  };
 }
 
 export interface StreamRequest {
@@ -209,6 +240,72 @@ export interface ChatUpdateRequest {
   content: {
     prompt: string;
     response: string;
+  };
+}
+
+export interface EditMessageRequest {
+  content: string;
+  model: string;
+}
+
+export interface EditMessageResponse {
+  success: boolean;
+  data: {
+    editedUserChat: ChatMessage;
+    newAssistantChat: ChatMessage;
+    usage: {
+      prompt_tokens: number;
+      completion_tokens: number;
+    };
+    cost: {
+      usd: number;
+      idr: number;
+    };
+  };
+}
+
+export interface SwitchVersionRequest {
+  versionNumber: number;
+}
+
+export interface SwitchVersionResponse {
+  success: boolean;
+  data: {
+    switchedToVersion: ChatMessage;
+    conversationThread: ChatMessage[];
+  };
+}
+
+export interface ChatVersionsResponse {
+  success: boolean;
+  data: {
+    versions: Array<{
+      chatId: string;
+      versionId: string;
+      versionNumber: number;
+      isCurrentVersion: boolean;
+      content: string;
+      createdAt: string;
+      versionHistory: Array<{
+        content: string;
+        editedAt: string;
+      }>;
+    }>;
+  };
+}
+
+export interface RegenerateResponse {
+  success: boolean;
+  data: {
+    newAssistantChat: ChatMessage;
+    usage: {
+      prompt_tokens: number;
+      completion_tokens: number;
+    };
+    cost: {
+      usd: number;
+      idr: number;
+    };
   };
 }
 
