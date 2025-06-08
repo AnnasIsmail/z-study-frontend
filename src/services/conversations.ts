@@ -18,7 +18,7 @@ export const getConversations = async (page = 1, limit = 20): Promise<Conversati
     const response = await api.get('/conversations', {
       params: { page, limit },
     });
-    return response.data.data;
+    return response.data;
   } catch (error: any) {
     throw new Error(error.response?.data?.message || 'Failed to fetch conversations');
   }
