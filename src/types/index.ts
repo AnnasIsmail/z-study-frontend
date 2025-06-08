@@ -102,21 +102,37 @@ export interface LLMModel {
 
 export interface ChatMessage {
   chatId?: string;
+  conversationId?: string;
+  userId?: string;
+  model?: string;
   role: "user" | "assistant" | "system";
-  content: string;
+  parentChatId?: string | null;
+  childChatIds?: string[];
   messageIndex?: number;
   isActive?: boolean;
+  versionId?: string;
+  originalChatId?: string;
+  versionNumber?: number;
+  isCurrentVersion?: boolean;
+  branchPoint?: string | null;
+  versionHistory?: Array<{
+    content: string;
+    editedAt: string;
+  }>;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  costUSD?: number;
+  costIDR?: number;
+  content: string;
+  filesUrl?: string[];
   isEdited?: boolean;
   editHistory?: Array<{
     content: string;
     editedAt: string;
   }>;
-  parentChatId?: string;
-  childChatIds?: string[];
-  versionId?: string;
-  originalChatId?: string;
-  versionNumber?: number;
-  isCurrentVersion?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   hasMultipleVersions?: boolean;
   totalVersions?: number;
   availableVersions?: Array<{
@@ -125,8 +141,6 @@ export interface ChatMessage {
     content: string;
     createdAt: string;
   }>;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
 export interface Conversation {
@@ -182,7 +196,8 @@ export interface ConversationChatsResponse {
   success: boolean;
   data: {
     results: ChatMessage[];
-    lastEvaluatedKey?: string;
+    limit: string;
+    totalResults: number;
     hasMore: boolean;
   };
 }

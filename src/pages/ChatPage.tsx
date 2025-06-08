@@ -35,12 +35,13 @@ import {
   Conversation,
   StreamResponse,
 } from "../types";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import ChatHistoryXS from "../components/Chat/ChatHistoryXS";
 
 const ChatPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { conversationId } = useParams<{ conversationId?: string }>();
   const [models, setModels] = useState<LLMModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [selectedModelName, setSelectedModelName] = useState<string>("");
@@ -67,6 +68,18 @@ const ChatPage: React.FC = () => {
     scrollToBottom();
   }, [messages, streamedResponse]);
 
+  // Load conversation when conversationId changes
+  useEffect(() => {
+    if (conversationId) {
+      loadConversationById(conversationId);
+    } else {
+      // Clear conversation if no ID in URL
+      setMessages([]);
+      setSelectedConversation(null);
+      setOptimizationInfo(null);
+    }
+  }, [conversationId]);
+
   const fetchModels = async () => {
     try {
       setLoadingModels(true);
@@ -84,6 +97,54 @@ const ChatPage: React.FC = () => {
       console.error("Error fetching models:", error);
     } finally {
       setLoadingModels(false);
+    }
+  };
+
+  const loadConversationById = async (convId: string) => {
+    try {
+      setLoadingHistory(true);
+      setError("");
+      
+      const response = await getConversationChats(convId, {
+        currentVersionOnly: true,
+        activeOnly: true,
+      });
+
+      if (response.success) {
+        // Transform the API response to match our ChatMessage format
+        const chatMessages: ChatMessageType[] = response.data.results.map((chat) => ({
+          chatId: chat.chatId,
+          role: chat.role as "user" | "assistant",
+          content: chat.content,
+          messageIndex: chat.messageIndex,
+          isActive: chat.isActive,
+          isEdited: chat.isEdited,
+          versionNumber: chat.versionNumber,
+          isCurrentVersion: chat.isCurrentVersion,
+          hasMultipleVersions: chat.hasMultipleVersions,
+          totalVersions: chat.totalVersions,
+          availableVersions: chat.availableVersions,
+          createdAt: chat.createdAt,
+          updatedAt: chat.updatedAt,
+        }));
+
+        setMessages(chatMessages);
+        
+        // Set conversation info (you might need to get this from another API call)
+        setSelectedConversation({
+          conversationId: convId,
+          title: `Conversation ${convId.slice(0, 8)}...`,
+          lastMessageAt: chatMessages[chatMessages.length - 1]?.createdAt || new Date().toISOString(),
+          createdAt: chatMessages[0]?.createdAt || new Date().toISOString(),
+        });
+        
+        setOptimizationInfo(null);
+      }
+    } catch (error: any) {
+      setError("Failed to load conversation");
+      console.error("Error loading conversation:", error);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -207,6 +268,12 @@ const ChatPage: React.FC = () => {
             if (streamResponse?.optimizationInfo) {
               setOptimizationInfo(streamResponse.optimizationInfo);
             }
+
+            // Update URL with conversation ID if we got one
+            if (streamResponse?.conversation?.conversationId && !conversationId) {
+              navigate(`/chat/${streamResponse.conversation.conversationId}`, { replace: true });
+              setSelectedConversation(streamResponse.conversation);
+            }
             break;
           }
 
@@ -274,33 +341,44 @@ const ChatPage: React.FC = () => {
 
     try {
       setLoading(true);
+      setStreamedResponse("");
+      setError("");
+
+      // Call edit API and start streaming
       const response = await editMessage(message.chatId, {
         content: newContent,
         model: model
       });
 
       if (response.success) {
-        // Update the edited user message and add new assistant response
+        // Update the edited user message
         const updatedMessages = [...messages];
         
-        // Update user message
+        // Update user message with edited content and version info
         updatedMessages[messageIndex] = {
           ...response.data.editedUserChat,
+          role: "user",
+          content: newContent,
           isEdited: true,
           versionNumber: response.data.editedUserChat.versionNumber || 1,
           hasMultipleVersions: (response.data.editedUserChat.totalVersions || 1) > 1,
         };
 
-        // Remove all messages after the edited one and add new assistant response
+        // Remove all messages after the edited one
         const messagesUpToEdit = updatedMessages.slice(0, messageIndex + 1);
-        messagesUpToEdit.push({
+        
+        // Add the new assistant response
+        const newAssistantMessage: ChatMessageType = {
           ...response.data.newAssistantChat,
+          role: "assistant",
           isEdited: false,
           versionNumber: 1,
           hasMultipleVersions: false,
-        });
+        };
 
+        messagesUpToEdit.push(newAssistantMessage);
         setMessages(messagesUpToEdit);
+        
         setSnackbarMessage("Message edited and response regenerated");
         setSnackbarOpen(true);
         setRefreshHistoryTrigger(prev => prev + 1);
@@ -406,32 +484,13 @@ const ChatPage: React.FC = () => {
     setError("");
     setSelectedConversation(null);
     setOptimizationInfo(null);
+    // Navigate to chat without conversation ID
+    navigate('/chat');
   };
 
   const handleSelectConversation = async (conversation: Conversation) => {
-    try {
-      setLoadingHistory(true);
-      setError("");
-      const response = await getConversationChats(conversation.conversationId, {
-        currentVersionOnly: true,
-        activeOnly: true,
-      });
-
-      if (response.success) {
-        const chatMessages = response.data.results.map((chat, index) => ({
-          ...chat,
-          messageIndex: index,
-        }));
-
-        setMessages(chatMessages);
-        setSelectedConversation(conversation);
-        setOptimizationInfo(null);
-      }
-    } catch (error: any) {
-      setError("Failed to load conversation history");
-    } finally {
-      setLoadingHistory(false);
-    }
+    // Navigate to the conversation URL
+    navigate(`/chat/${conversation.conversationId}`);
   };
 
   const formatTimestamp = (index: number) => {
