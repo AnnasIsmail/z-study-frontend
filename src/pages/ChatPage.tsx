@@ -82,10 +82,6 @@ const ChatPage: React.FC = () => {
   const [lastEvaluatedKey, setLastEvaluatedKey] = useState<string | undefined>();
   const [loadingMore, setLoadingMore] = useState(false);
   
-  // Version management states
-  const [messageVersions, setMessageVersions] = useState<Record<string, any[]>>({});
-  const [currentVersions, setCurrentVersions] = useState<Record<string, number>>({});
-  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -111,8 +107,6 @@ const ChatPage: React.FC = () => {
   }, [conversationId]);
 
   const resetVersionState = () => {
-    setMessageVersions({});
-    setCurrentVersions({});
     setLastEvaluatedKey(undefined);
     setHasMoreMessages(false);
   };
@@ -673,42 +667,44 @@ const ChatPage: React.FC = () => {
     try {
       const response = await getChatVersions(chatId);
       if (response.success) {
-        setMessageVersions(prev => ({
-          ...prev,
-          [chatId]: response.data.versions
+        return response.data.versions.map(version => ({
+          versionNumber: version.versionNumber,
+          isCurrentVersion: version.isCurrentVersion,
+          content: version.content,
+          contentPreview: version.contentPreview,
+          createdAt: version.createdAt,
+          wordCount: version.wordCount,
+          characterCount: version.characterCount,
         }));
-        
-        // Set current version
-        const currentVersion = response.data.versions.find(v => v.isCurrentVersion);
-        if (currentVersion) {
-          setCurrentVersions(prev => ({
-            ...prev,
-            [chatId]: currentVersion.versionNumber
-          }));
-        }
       }
+      return [];
     } catch (error: any) {
       console.error("Failed to load versions:", error);
+      return [];
     }
   };
 
   // Switch to a different version
-  const handleSwitchVersion = async (chatId: string, versionNumber: number) => {
+  const handleSwitchVersion = async (messageIndex: number, versionNumber: number) => {
+    const message = messages[messageIndex];
+    if (!message?.chatId) return;
+
     try {
       setLoading(true);
-      const response = await switchToVersion(chatId, { versionNumber });
+      const response = await switchToVersion(message.chatId, { versionNumber });
 
       if (response.success) {
-        // Update current version
-        setCurrentVersions(prev => ({
-          ...prev,
-          [chatId]: versionNumber
-        }));
-
         // Update the message content in UI
-        setMessages(prev => prev.map(msg => 
-          msg.chatId === chatId 
-            ? { ...msg, content: response.data.switchedToVersion.content, versionNumber }
+        setMessages(prev => prev.map((msg, index) => 
+          index === messageIndex 
+            ? { 
+                ...msg, 
+                content: response.data.switchedToVersion.content, 
+                versionNumber: response.data.switchedToVersion.versionNumber,
+                isCurrentVersion: response.data.switchedToVersion.isCurrentVersion,
+                hasMultipleVersions: response.data.switchedToVersion.hasMultipleVersions,
+                totalVersions: response.data.switchedToVersion.totalVersions,
+              }
             : msg
         ));
 
@@ -719,28 +715,6 @@ const ChatPage: React.FC = () => {
       setError(error.message || "Failed to switch version");
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Version navigation
-  const navigateVersion = (chatId: string, direction: 'prev' | 'next') => {
-    const versions = messageVersions[chatId];
-    const currentVersion = currentVersions[chatId];
-    
-    if (!versions || !currentVersion) return;
-    
-    const currentIndex = versions.findIndex(v => v.versionNumber === currentVersion);
-    let newIndex;
-    
-    if (direction === 'prev') {
-      newIndex = currentIndex > 0 ? currentIndex - 1 : versions.length - 1;
-    } else {
-      newIndex = currentIndex < versions.length - 1 ? currentIndex + 1 : 0;
-    }
-    
-    const newVersion = versions[newIndex];
-    if (newVersion) {
-      handleSwitchVersion(chatId, newVersion.versionNumber);
     }
   };
 
@@ -1054,74 +1028,33 @@ const ChatPage: React.FC = () => {
                   ) : (
                     <>
                       {messages.map((message, index) => (
-                        <Box key={`${message.chatId || index}`} sx={{ position: 'relative' }}>
-                          <ChatMessage
-                            message={message}
-                            model={
-                              message.role === "assistant"
-                                ? selectedModelName
-                                : undefined
-                            }
-                            showHeader={true}
-                            timestamp={formatTimestamp(index)}
-                            messageIndex={index}
-                            onEditMessage={(content) =>
-                              handleEditMessage(index, content)
-                            }
-                            onRegenerateResponse={
-                              message.role === "assistant" 
-                                ? () => handleRegenerateResponse(index)
-                                : undefined
-                            }
-                            canEdit={message.role === 'user' && message.editInfo?.canEdit}
-                            canGenerate={false}
-                            availableModels={availableModelsForSelect}
-                          />
-                          
-                          {/* Version Navigation for messages with multiple versions */}
-                          {message.hasMultipleVersions && message.chatId && (
-                            <Box sx={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
-                              gap: 1,
-                              mt: 1,
-                              mr: message.role === 'user' ? 6 : 0,
-                              ml: message.role === 'user' ? 0 : 6,
-                              opacity: 0.7,
-                              '&:hover': { opacity: 1 }
-                            }}>
-                              <IconButton
-                                size="small"
-                                onClick={() => navigateVersion(message.chatId!, 'prev')}
-                                disabled={loading}
-                              >
-                                <ChevronLeft size={16} />
-                              </IconButton>
-                              
-                              <Chip
-                                label={`${currentVersions[message.chatId] || message.versionNumber}/${message.totalVersions}`}
-                                size="small"
-                                variant="outlined"
-                                onClick={() => loadMessageVersions(message.chatId!)}
-                                sx={{ 
-                                  fontSize: '0.7rem',
-                                  height: 24,
-                                  cursor: 'pointer',
-                                  '&:hover': { bgcolor: 'action.hover' }
-                                }}
-                              />
-                              
-                              <IconButton
-                                size="small"
-                                onClick={() => navigateVersion(message.chatId!, 'next')}
-                                disabled={loading}
-                              >
-                                <ChevronRight size={16} />
-                              </IconButton>
-                            </Box>
-                          )}
-                        </Box>
+                        <ChatMessage
+                          key={`${message.chatId || index}`}
+                          message={message}
+                          model={
+                            message.role === "assistant"
+                              ? selectedModelName
+                              : undefined
+                          }
+                          showHeader={true}
+                          timestamp={formatTimestamp(index)}
+                          messageIndex={index}
+                          onEditMessage={(content) =>
+                            handleEditMessage(index, content)
+                          }
+                          onRegenerateResponse={
+                            message.role === "assistant" 
+                              ? () => handleRegenerateResponse(index)
+                              : undefined
+                          }
+                          onSwitchVersion={(versionNumber) =>
+                            handleSwitchVersion(index, versionNumber)
+                          }
+                          onLoadVersions={loadMessageVersions}
+                          canEdit={message.role === 'user' && message.editInfo?.canEdit}
+                          canGenerate={false}
+                          availableModels={availableModelsForSelect}
+                        />
                       ))}
 
                       {streamedResponse && (

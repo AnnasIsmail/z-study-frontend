@@ -5,11 +5,7 @@ import {
   Typography,
   IconButton,
   Tooltip,
-  TextField,
-  Button,
   Chip,
-  Menu,
-  MenuItem,
   Fade,
 } from '@mui/material';
 import { 
@@ -17,21 +13,17 @@ import {
   User, 
   Copy, 
   Check, 
-  X, 
-  Save, 
-  MoreVertical, 
-  GitBranch,
-  ChevronLeft,
-  ChevronRight,
   RotateCcw,
+  GitBranch,
   History,
-  PenTool,
 } from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../types';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { format } from 'date-fns';
+import MessageEditor from './MessageEditor';
+import VersionNavigator from './VersionNavigator';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -41,7 +33,7 @@ interface ChatMessageProps {
   onEditMessage?: (content: string) => void;
   onRegenerateResponse?: () => void;
   onSwitchVersion?: (versionNumber: number) => void;
-  onViewVersions?: () => void;
+  onLoadVersions?: (chatId: string) => Promise<any[]>;
   model?: string;
   showHeader?: boolean;
   timestamp?: string;
@@ -58,17 +50,18 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   darkMode = false,
   onEditMessage,
   onRegenerateResponse,
+  onSwitchVersion,
+  onLoadVersions,
   model,
   showHeader = false,
   timestamp,
   messageIndex,
   canEdit = false,
   canGenerate = false,
+  availableModels,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editedContent, setEditedContent] = useState(message.content);
-  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
 
   const copyToClipboard = async () => {
     try {
@@ -80,30 +73,25 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     }
   };
 
-  const handleEdit = () => {
+  const handleStartEdit = () => {
     setIsEditing(true);
-    setEditedContent(message.content);
-    setMenuAnchorEl(null);
   };
 
-  const handleSave = () => {
-    if (onEditMessage && editedContent !== message.content && editedContent.trim()) {
-      onEditMessage(editedContent);
+  const handleSaveEdit = (content: string) => {
+    if (onEditMessage && content !== message.content && content.trim()) {
+      onEditMessage(content);
     }
     setIsEditing(false);
   };
 
-  const handleCancel = () => {
+  const handleCancelEdit = () => {
     setIsEditing(false);
-    setEditedContent(message.content);
   };
 
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setMenuAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setMenuAnchorEl(null);
+  const handleVersionChange = (versionNumber: number) => {
+    if (onSwitchVersion) {
+      onSwitchVersion(versionNumber);
+    }
   };
 
   const formatTimestamp = (dateString?: string) => {
@@ -232,73 +220,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               },
             }}
           >
-            {isEditing ? (
-              <Box sx={{ width: '100%' }}>
-                <TextField
-                  fullWidth
-                  multiline
-                  value={editedContent}
-                  onChange={(e) => setEditedContent(e.target.value)}
-                  variant="outlined"
-                  size="small"
-                  sx={{ 
-                    mb: 2,
-                    '& .MuiOutlinedInput-root': {
-                      bgcolor: isUser ? 'rgba(255,255,255,0.1)' : 'background.paper',
-                      '& fieldset': {
-                        borderColor: isUser ? 'rgba(255,255,255,0.3)' : 'divider',
-                      },
-                      '&:hover fieldset': {
-                        borderColor: isUser ? 'rgba(255,255,255,0.5)' : 'primary.main',
-                      },
-                      '&.Mui-focused fieldset': {
-                        borderColor: isUser ? 'white' : 'primary.main',
-                      },
-                    },
-                    '& .MuiInputBase-input': {
-                      color: isUser ? 'white' : 'text.primary',
-                    },
-                  }}
-                  placeholder={isUser ? 'Edit your message...' : 'Edit assistant response...'}
-                />
-                
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                  <Button
-                    size="small"
-                    startIcon={<X size={16} />}
-                    onClick={handleCancel}
-                    variant="outlined"
-                    sx={{
-                      color: isUser ? 'white' : 'text.primary',
-                      borderColor: isUser ? 'rgba(255,255,255,0.5)' : 'divider',
-                      '&:hover': {
-                        borderColor: isUser ? 'white' : 'primary.main',
-                        bgcolor: isUser ? 'rgba(255,255,255,0.1)' : 'action.hover',
-                      },
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="small"
-                    startIcon={<Save size={16} />}
-                    onClick={handleSave}
-                    variant="contained"
-                    disabled={!editedContent.trim() || editedContent === message.content}
-                    sx={{
-                      bgcolor: isUser ? 'rgba(255,255,255,0.2)' : 'primary.main',
-                      color: isUser ? 'white' : 'white',
-                      '&:hover': {
-                        bgcolor: isUser ? 'rgba(255,255,255,0.3)' : 'primary.dark',
-                      },
-                    }}
-                  >
-                    Save & Generate
-                  </Button>
-                </Box>
-              </Box>
-            ) : isUser ? (
-              <Typography variant="body1" sx={{ 
+            {isUser ? (
+              <Typography variant="body1\" sx={{ 
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 lineHeight: 1.5,
@@ -342,8 +265,22 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             )}
           </Paper>
 
+          {/* Message Editor */}
+          {!isStreaming && (
+            <MessageEditor
+              initialContent={message.content}
+              isEditing={isEditing}
+              onStartEdit={handleStartEdit}
+              onSaveEdit={handleSaveEdit}
+              onCancelEdit={handleCancelEdit}
+              canEdit={canEdit && message.editInfo?.canEdit}
+              disabled={loading}
+              role={message.role}
+            />
+          )}
+
           {/* Action buttons at the bottom of the message */}
-          {!isEditing && (
+          {!isEditing && !isStreaming && (
             <Fade in={true}>
               <Box
                 sx={{
@@ -381,38 +318,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   </IconButton>
                 </Tooltip>
 
-                {/* Edit button for user messages */}
-                {isUser && message.editInfo?.canEdit && onEditMessage && (
-                  <Tooltip title="Edit message">
-                    <IconButton
-                      size="small"
-                      onClick={handleEdit}
-                      sx={{
-                        width: 28,
-                        height: 28,
-                        bgcolor: 'transparent',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        color: 'text.secondary',
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                          borderColor: 'primary.main',
-                          color: 'primary.main',
-                        },
-                        transition: 'all 0.2s ease',
-                      }}
-                    >
-                      <PenTool size={14} />
-                    </IconButton>
-                  </Tooltip>
-                )}
-
                 {/* Regenerate button for assistant messages */}
                 {!isUser && onRegenerateResponse && (
                   <Tooltip title="Regenerate response">
                     <IconButton
                       size="small"
                       onClick={onRegenerateResponse}
+                      disabled={loading}
                       sx={{
                         width: 28,
                         height: 28,
@@ -433,97 +345,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   </Tooltip>
                 )}
 
-                {/* Version navigation for messages with multiple versions */}
-                {message.hasMultipleVersions && (
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.5,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      bgcolor: 'transparent',
-                      '&:hover': {
-                        borderColor: 'primary.main',
-                        bgcolor: 'action.hover',
-                      },
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    <Tooltip title="Previous version">
-                      <IconButton
-                        size="small"
-                        sx={{
-                          width: 24,
-                          height: 24,
-                          color: 'text.secondary',
-                          '&:hover': {
-                            color: 'primary.main',
-                            bgcolor: 'transparent',
-                          },
-                        }}
-                      >
-                        <ChevronLeft size={12} />
-                      </IconButton>
-                    </Tooltip>
-
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        fontWeight: 600,
-                        color: 'text.secondary',
-                        px: 0.5,
-                        fontSize: '0.75rem',
-                        minWidth: '20px',
-                        textAlign: 'center',
-                      }}
-                    >
-                      {message.versionNumber}
-                    </Typography>
-
-                    <Tooltip title="Next version">
-                      <IconButton
-                        size="small"
-                        sx={{
-                          width: 24,
-                          height: 24,
-                          color: 'text.secondary',
-                          '&:hover': {
-                            color: 'primary.main',
-                            bgcolor: 'transparent',
-                          },
-                        }}
-                      >
-                        <ChevronRight size={12} />
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                )}
-
-                {/* Version history button */}
-                {message.hasMultipleVersions && (
-                  <Tooltip title="View all versions">
-                    <IconButton
-                      size="small"
-                      sx={{
-                        width: 28,
-                        height: 28,
-                        bgcolor: 'transparent',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        color: 'text.secondary',
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                          borderColor: 'primary.main',
-                          color: 'primary.main',
-                        },
-                        transition: 'all 0.2s ease',
-                      }}
-                    >
-                      <History size={14} />
-                    </IconButton>
-                  </Tooltip>
+                {/* Version Navigator */}
+                {message.hasMultipleVersions && message.chatId && onSwitchVersion && onLoadVersions && (
+                  <VersionNavigator
+                    chatId={message.chatId}
+                    currentVersion={message.versionNumber || 1}
+                    totalVersions={message.totalVersions || 1}
+                    hasMultipleVersions={message.hasMultipleVersions}
+                    onVersionChange={handleVersionChange}
+                    onLoadVersions={onLoadVersions}
+                    disabled={loading}
+                  />
                 )}
 
                 {/* Timestamp */}
