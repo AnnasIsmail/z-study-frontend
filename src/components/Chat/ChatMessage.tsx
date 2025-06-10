@@ -87,7 +87,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   };
 
   const handleSave = () => {
-    if (onEditMessage && editedContent !== message.content) {
+    if (onEditMessage && editedContent !== message.content && editedContent.trim()) {
       onEditMessage(editedContent);
     }
     setIsEditing(false);
@@ -284,7 +284,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                     startIcon={<Save size={16} />}
                     onClick={handleSave}
                     variant="contained"
-                    disabled={!editedContent.trim()}
+                    disabled={!editedContent.trim() || editedContent === message.content}
                     sx={{
                       bgcolor: isUser ? 'rgba(255,255,255,0.2)' : 'primary.main',
                       color: isUser ? 'white' : 'white',
@@ -382,7 +382,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 </Tooltip>
 
                 {/* Edit button for user messages */}
-                {canEdit && message.editInfo?.canEdit && isUser && (
+                {isUser && message.editInfo?.canEdit && onEditMessage && (
                   <Tooltip title="Edit message">
                     <IconButton
                       size="small"
