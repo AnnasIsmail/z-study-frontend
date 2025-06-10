@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Box,
   Container,
@@ -24,6 +24,11 @@ import {
   Copy,
   Check,
   Repeat,
+  ChevronLeft,
+  ChevronRight,
+  Edit,
+  Save,
+  X,
 } from "lucide-react";
 import MainLayout from "../components/Layout/MainLayout";
 import ModelSelector from "../components/Chat/ModelSelector";
@@ -33,8 +38,7 @@ import { useAuth } from "../context/AuthContext";
 import { getModels, getAllModels, chatCompletionStream } from "../services/llm";
 import {
   getConversationChats,
-  editMessage,
-  regenerateResponse,
+  editMessageAndComplete,
   switchToVersion,
   getChatVersions,
 } from "../services/conversations";
@@ -71,7 +75,18 @@ const ChatPage: React.FC = () => {
   >(null);
   const [snackbarMessage, setSnackbarMessage] = useState("");
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  
+  // Lazy loading states
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<string | undefined>();
+  const [loadingMore, setLoadingMore] = useState(false);
+  
+  // Version management states
+  const [messageVersions, setMessageVersions] = useState<Record<string, any[]>>({});
+  const [currentVersions, setCurrentVersions] = useState<Record<string, number>>({});
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchModels();
@@ -90,8 +105,16 @@ const ChatPage: React.FC = () => {
       setMessages([]);
       setSelectedConversation(null);
       setOptimizationInfo(null);
+      resetVersionState();
     }
   }, [conversationId]);
+
+  const resetVersionState = () => {
+    setMessageVersions({});
+    setCurrentVersions({});
+    setLastEvaluatedKey(undefined);
+    setHasMoreMessages(false);
+  };
 
   const fetchModels = async () => {
     try {
@@ -113,48 +136,63 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  const loadConversationById = async (convId: string) => {
+  const loadConversationById = async (convId: string, loadMore = false) => {
     try {
-      setLoadingHistory(true);
+      if (!loadMore) {
+        setLoadingHistory(true);
+        setMessages([]);
+        resetVersionState();
+      } else {
+        setLoadingMore(true);
+      }
       setError("");
 
       const response = await getConversationChats(convId, {
-        currentVersionOnly: true,
-        activeOnly: true,
+        limit: 20,
+        lastEvaluatedKey: loadMore ? lastEvaluatedKey : undefined,
+        sortOrder: "desc",
+        includeVersions: false, // Only get current versions
       });
 
-      if (response) {
-        // Transform the API response to match our ChatMessage format
-        const chatMessages: ChatMessageType[] = response.results.map(
+      if (response.success && response.data) {
+        const chatMessages: ChatMessageType[] = response.data.results.map(
           (chat) => ({
             chatId: chat.chatId,
             role: chat.role as "user" | "assistant",
             content: chat.content,
             messageIndex: chat.messageIndex,
             isActive: chat.isActive,
-            isEdited: chat.isEdited,
             versionNumber: chat.versionNumber,
             isCurrentVersion: chat.isCurrentVersion,
             hasMultipleVersions: chat.hasMultipleVersions,
             totalVersions: chat.totalVersions,
-            availableVersions: chat.availableVersions,
+            editInfo: chat.editInfo,
             createdAt: chat.createdAt,
             updatedAt: chat.updatedAt,
           })
         );
 
-        setMessages(chatMessages);
+        if (loadMore) {
+          // Prepend older messages (since we're using desc order)
+          setMessages(prev => [...chatMessages.reverse(), ...prev]);
+        } else {
+          // Initial load - reverse to show chronological order
+          setMessages(chatMessages.reverse());
+          
+          // Set conversation info
+          setSelectedConversation({
+            conversationId: convId,
+            title: `Conversation ${convId.slice(0, 8)}...`,
+            lastMessageAt:
+              chatMessages[chatMessages.length - 1]?.createdAt ||
+              new Date().toISOString(),
+            createdAt: chatMessages[0]?.createdAt || new Date().toISOString(),
+          });
+        }
 
-        // Set conversation info (you might need to get this from another API call)
-        setSelectedConversation({
-          conversationId: convId,
-          title: `Conversation ${convId.slice(0, 8)}...`,
-          lastMessageAt:
-            chatMessages[chatMessages.length - 1]?.createdAt ||
-            new Date().toISOString(),
-          createdAt: chatMessages[0]?.createdAt || new Date().toISOString(),
-        });
-
+        // Update pagination info
+        setHasMoreMessages(response.data.hasMore);
+        setLastEvaluatedKey(response.data.lastEvaluatedKey);
         setOptimizationInfo(null);
       }
     } catch (error: any) {
@@ -162,8 +200,29 @@ const ChatPage: React.FC = () => {
       console.error("Error loading conversation:", error);
     } finally {
       setLoadingHistory(false);
+      setLoadingMore(false);
     }
   };
+
+  // Lazy loading handler
+  const handleScroll = useCallback(() => {
+    if (!messagesContainerRef.current || !hasMoreMessages || loadingMore) return;
+    
+    const { scrollTop } = messagesContainerRef.current;
+    
+    // Load more when scrolled to top
+    if (scrollTop === 0 && conversationId) {
+      loadConversationById(conversationId, true);
+    }
+  }, [conversationId, hasMoreMessages, loadingMore]);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -184,34 +243,6 @@ const ChatPage: React.FC = () => {
     );
   };
 
-  const prepareChatHistory = (): ChatMessageType[] => {
-    return messages.map((msg) => ({
-      ...msg,
-      updated: msg.isEdited || false,
-    }));
-  };
-
-  const calculateHistorySize = (history: ChatMessageType[]): number => {
-    const jsonString = JSON.stringify(history);
-    return new Blob([jsonString]).size;
-  };
-
-  const optimizeChatHistory = (
-    history: ChatMessageType[]
-  ): ChatMessageType[] => {
-    const maxSize = 4 * 1024 * 1024;
-    let optimizedHistory = [...history];
-
-    while (
-      calculateHistorySize(optimizedHistory) > maxSize &&
-      optimizedHistory.length > 2
-    ) {
-      optimizedHistory = optimizedHistory.slice(2);
-    }
-
-    return optimizedHistory;
-  };
-
   const sendMessage = async (
     messageContent: string,
     conversationId?: string
@@ -219,24 +250,23 @@ const ChatPage: React.FC = () => {
     const userMessage: ChatMessageType = {
       role: "user",
       content: messageContent,
-      isEdited: false,
+      editInfo: { canEdit: true, isEdited: false },
     };
 
+    // Add user message immediately to UI
+    setMessages(prev => [...prev, userMessage]);
     setLoading(true);
     setStreamedResponse("");
     setError("");
     setOptimizationInfo(null);
 
     try {
-      const chatHistory = prepareChatHistory();
-      const optimizedHistory = optimizeChatHistory(chatHistory);
-
       const stream = await chatCompletionStream({
         model: selectedModel,
         messages: [userMessage],
         max_tokens: getMaxTokens(),
         conversationId: conversationId,
-        chatHistory: optimizedHistory,
+        chatHistory: messages,
       });
 
       if (!stream) throw new Error("Failed to initialize stream");
@@ -273,24 +303,16 @@ const ChatPage: React.FC = () => {
                 versionNumber: 1,
                 totalVersions: 1,
                 hasMultipleVersions: false,
-                isEdited: false,
+                editInfo: { canEdit: false, isEdited: false },
               };
 
-              setMessages((prev) => [
-                ...prev,
-                finalUserMessage,
-                finalAssistantMessage,
-              ]);
-            } else {
-              setMessages((prev) => [
-                ...prev,
-                userMessage,
-                {
-                  role: "assistant",
-                  content: accumulatedContent,
-                  isEdited: false,
-                },
-              ]);
+              // Update messages with final data
+              setMessages(prev => {
+                const newMessages = [...prev];
+                newMessages[newMessages.length - 2] = finalUserMessage;
+                newMessages[newMessages.length - 1] = finalAssistantMessage;
+                return newMessages;
+              });
             }
 
             setStreamedResponse("");
@@ -352,8 +374,17 @@ const ChatPage: React.FC = () => {
         }
       };
 
+      // Add assistant message placeholder immediately
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "",
+        editInfo: { canEdit: false, isEdited: false },
+      }]);
+
       await processStream();
     } catch (error: any) {
+      // Remove the placeholder messages on error
+      setMessages(prev => prev.slice(0, -2));
       setError(
         error.message.includes("Insufficient balance")
           ? "Insufficient balance. Please top up to continue."
@@ -371,123 +402,204 @@ const ChatPage: React.FC = () => {
     await sendMessage(input, selectedConversation?.conversationId);
   };
 
-  const handleEditMessage = async (
-    messageIndex: number,
-    newContent: string,
-    model: string
-  ) => {
+  // Enhanced edit with auto-completion
+  const handleEditMessage = async (messageIndex: number, newContent: string) => {
     const message = messages[messageIndex];
-    if (!message?.chatId) return;
+    if (!message?.chatId) {
+      console.error("Message chatId not found");
+      return;
+    }
 
     try {
       setLoading(true);
-      setStreamedResponse("");
       setError("");
+      setStreamedResponse("");
 
-      // Call edit API and start streaming
-      const response = await editMessage(message.chatId, {
+      // Update message immediately in UI
+      const updatedMessages = [...messages];
+      updatedMessages[messageIndex] = {
+        ...message,
         content: newContent,
-        model: model,
+        editInfo: {
+          ...message.editInfo,
+          isEdited: true,
+          lastEditedAt: new Date().toISOString(),
+        },
+      };
+      
+      // Remove subsequent messages temporarily
+      const messagesToKeep = updatedMessages.slice(0, messageIndex + 1);
+      setMessages(messagesToKeep);
+
+      // Call edit and complete API
+      const stream = await editMessageAndComplete(message.chatId, {
+        content: newContent,
+        model: selectedModel,
+        autoComplete: true,
       });
 
-      if (response.success) {
-        // Update the edited user message
-        const updatedMessages = [...messages];
+      if (!stream) throw new Error("Failed to initialize edit stream");
 
-        // Update user message with edited content and version info
-        updatedMessages[messageIndex] = {
-          ...response.data.editedUserChat,
-          role: "user",
-          content: newContent,
-          isEdited: true,
-          versionNumber: response.data.editedUserChat.versionNumber || 1,
-          hasMultipleVersions:
-            (response.data.editedUserChat.totalVersions || 1) > 1,
-        };
+      const reader = stream.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let accumulatedContent = "";
+      let editResponse: any = null;
 
-        // Remove all messages after the edited one
-        const messagesUpToEdit = updatedMessages.slice(0, messageIndex + 1);
+      const processStream = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (editResponse?.assistantMessage) {
+              const newAssistantMessage: ChatMessageType = {
+                role: "assistant",
+                content: accumulatedContent,
+                chatId: editResponse.assistantMessage.chatId,
+                messageIndex: messageIndex + 1,
+                isActive: true,
+                isCurrentVersion: true,
+                versionNumber: editResponse.assistantMessage.versionNumber,
+                totalVersions: editResponse.assistantMessage.totalVersions,
+                hasMultipleVersions: editResponse.assistantMessage.hasMultipleVersions,
+                editInfo: { canEdit: false, isEdited: false },
+              };
 
-        // Add the new assistant response
-        const newAssistantMessage: ChatMessageType = {
-          ...response.data.newAssistantChat,
-          role: "assistant",
-          isEdited: false,
-          versionNumber: 1,
-          hasMultipleVersions: false,
-        };
+              // Update final messages
+              setMessages(prev => {
+                const finalMessages = [...prev];
+                // Update edited message with final data
+                finalMessages[messageIndex] = {
+                  ...finalMessages[messageIndex],
+                  versionNumber: editResponse.editedMessage.versionNumber,
+                  hasMultipleVersions: editResponse.editedMessage.hasMultipleVersions,
+                  totalVersions: editResponse.editedMessage.totalVersions,
+                };
+                // Add new assistant response
+                finalMessages.push(newAssistantMessage);
+                return finalMessages;
+              });
+            }
 
-        messagesUpToEdit.push(newAssistantMessage);
-        setMessages(messagesUpToEdit);
+            setStreamedResponse("");
+            setSnackbarMessage("Message edited and response generated successfully");
+            setSnackbarOpen(true);
+            setRefreshHistoryTrigger((prev) => prev + 1);
+            break;
+          }
 
-        setSnackbarMessage("Message edited and response regenerated");
-        setSnackbarOpen(true);
-        setRefreshHistoryTrigger((prev) => prev + 1);
-      }
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              let jsonStr = line.slice(5).trim();
+
+              if (jsonStr.startsWith("data: "))
+                jsonStr = jsonStr.slice(5).trim();
+
+              if (jsonStr === "[DONE]") continue;
+
+              try {
+                const data = JSON.parse(jsonStr);
+
+                if (data.editedMessage) {
+                  editResponse = data;
+                  // Update the edited message info
+                  setMessages(prev => {
+                    const updated = [...prev];
+                    updated[messageIndex] = {
+                      ...updated[messageIndex],
+                      versionNumber: data.editedMessage.versionNumber,
+                      hasMultipleVersions: data.editedMessage.hasMultipleVersions,
+                      totalVersions: data.editedMessage.totalVersions,
+                    };
+                    return updated;
+                  });
+                }
+
+                if (data.choices !== null) {
+                  if (data.choices?.[0]?.delta?.content) {
+                    accumulatedContent += data.choices[0].delta.content;
+                    setStreamedResponse(
+                      (prev) => prev + data.choices[0].delta.content
+                    );
+                  }
+                }
+              } catch (e) {
+                console.error("Error parsing JSON:", e);
+              }
+            }
+          }
+        }
+      };
+
+      // Add assistant message placeholder
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "",
+        editInfo: { canEdit: false, isEdited: false },
+      }]);
+
+      await processStream();
     } catch (error: any) {
+      console.error("Edit message error:", error);
       setError(error.message || "Failed to edit message");
+      setSnackbarMessage("Failed to edit message");
+      setSnackbarOpen(true);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRegenerateFromMessage = async (
-    messageIndex: number,
-    model: string
-  ) => {
-    const message = messages[messageIndex];
-    if (!message?.chatId) return;
-
+  // Load versions for a specific message
+  const loadMessageVersions = async (chatId: string) => {
     try {
-      setLoading(true);
-      const response = await regenerateResponse(message.chatId, model);
-
+      const response = await getChatVersions(chatId);
       if (response.success) {
-        // Update the message with new version info
-        const updatedMessages = [...messages];
-        updatedMessages[messageIndex] = {
-          ...response.data.newAssistantChat,
-          versionNumber: response.data.newAssistantChat.versionNumber || 1,
-          hasMultipleVersions:
-            (response.data.newAssistantChat.totalVersions || 1) > 1,
-        };
-
-        setMessages(updatedMessages);
-        setSnackbarMessage("Response regenerated");
-        setSnackbarOpen(true);
-        setRefreshHistoryTrigger((prev) => prev + 1);
+        setMessageVersions(prev => ({
+          ...prev,
+          [chatId]: response.data.versions
+        }));
+        
+        // Set current version
+        const currentVersion = response.data.versions.find(v => v.isCurrentVersion);
+        if (currentVersion) {
+          setCurrentVersions(prev => ({
+            ...prev,
+            [chatId]: currentVersion.versionNumber
+          }));
+        }
       }
     } catch (error: any) {
-      setError(error.message || "Failed to regenerate response");
-    } finally {
-      setLoading(false);
+      console.error("Failed to load versions:", error);
     }
   };
 
-  const handleSwitchVersion = async (
-    messageIndex: number,
-    versionNumber: number
-  ) => {
-    const message = messages[messageIndex];
-    if (!message?.chatId) return;
-
+  // Switch to a different version
+  const handleSwitchVersion = async (chatId: string, versionNumber: number) => {
     try {
       setLoading(true);
-      const response = await switchToVersion(message.chatId, { versionNumber });
+      const response = await switchToVersion(chatId, { versionNumber });
 
       if (response.success) {
-        // Update conversation thread with switched version
-        const newMessages = response.data.conversationThread.map(
-          (msg, idx) => ({
-            ...msg,
-            messageIndex: idx,
-          })
-        );
+        // Update current version
+        setCurrentVersions(prev => ({
+          ...prev,
+          [chatId]: versionNumber
+        }));
 
-        setMessages(newMessages);
+        // Update the message content in UI
+        setMessages(prev => prev.map(msg => 
+          msg.chatId === chatId 
+            ? { ...msg, content: response.data.switchedToVersion.content, versionNumber }
+            : msg
+        ));
+
         setSnackbarMessage(`Switched to version ${versionNumber}`);
         setSnackbarOpen(true);
-        setRefreshHistoryTrigger((prev) => prev + 1);
       }
     } catch (error: any) {
       setError(error.message || "Failed to switch version");
@@ -496,28 +608,25 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  const handleViewVersions = async (messageIndex: number) => {
-    const message = messages[messageIndex];
-    if (!message?.chatId) return;
-
-    try {
-      const response = await getChatVersions(message.chatId);
-      if (response.success) {
-        // Update message with version information
-        const updatedMessages = [...messages];
-        updatedMessages[messageIndex] = {
-          ...updatedMessages[messageIndex],
-          availableVersions: response.data.versions.map((v) => ({
-            versionNumber: v.versionNumber,
-            versionId: v.versionId,
-            content: v.content,
-            createdAt: v.createdAt,
-          })),
-        };
-        setMessages(updatedMessages);
-      }
-    } catch (error: any) {
-      console.error("Failed to fetch versions:", error);
+  // Version navigation
+  const navigateVersion = (chatId: string, direction: 'prev' | 'next') => {
+    const versions = messageVersions[chatId];
+    const currentVersion = currentVersions[chatId];
+    
+    if (!versions || !currentVersion) return;
+    
+    const currentIndex = versions.findIndex(v => v.versionNumber === currentVersion);
+    let newIndex;
+    
+    if (direction === 'prev') {
+      newIndex = currentIndex > 0 ? currentIndex - 1 : versions.length - 1;
+    } else {
+      newIndex = currentIndex < versions.length - 1 ? currentIndex + 1 : 0;
+    }
+    
+    const newVersion = versions[newIndex];
+    if (newVersion) {
+      handleSwitchVersion(chatId, newVersion.versionNumber);
     }
   };
 
@@ -534,12 +643,11 @@ const ChatPage: React.FC = () => {
     setError("");
     setSelectedConversation(null);
     setOptimizationInfo(null);
-    // Navigate to chat without conversation ID
+    resetVersionState();
     navigate("/chat");
   };
 
   const handleSelectConversation = async (conversation: Conversation) => {
-    // Navigate to the conversation URL
     navigate(`/chat/${conversation.conversationId}`);
   };
 
@@ -667,7 +775,7 @@ const ChatPage: React.FC = () => {
               </Box>
 
               {/* Model Selector */}
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
                 <Typography
                   variant="body2"
                   sx={{ fontWeight: 500, minWidth: "fit-content" }}
@@ -763,6 +871,7 @@ const ChatPage: React.FC = () => {
                 }}
               >
                 <Box
+                  ref={messagesContainerRef}
                   sx={{
                     flexGrow: 1,
                     overflowY: "auto",
@@ -786,6 +895,16 @@ const ChatPage: React.FC = () => {
                     },
                   }}
                 >
+                  {/* Load more indicator */}
+                  {loadingMore && (
+                    <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+                      <CircularProgress size={24} />
+                      <Typography variant="caption" sx={{ ml: 1 }}>
+                        Loading more messages...
+                      </Typography>
+                    </Box>
+                  )}
+
                   {loadingHistory ? (
                     <Box
                       sx={{
@@ -821,33 +940,67 @@ const ChatPage: React.FC = () => {
                   ) : (
                     <>
                       {messages.map((message, index) => (
-                        <ChatMessage
-                          key={`${message.chatId || index}`}
-                          message={message}
-                          model={
-                            message.role === "assistant"
-                              ? selectedModelName
-                              : undefined
-                          }
-                          showHeader={true}
-                          timestamp={formatTimestamp(index)}
-                          messageIndex={index}
-                          onEditMessage={(content, model) =>
-                            handleEditMessage(index, content, model)
-                          }
-                          onRegenerateFromMessage={(model) =>
-                            handleRegenerateFromMessage(index, model)
-                          }
-                          onSwitchVersion={(versionNumber) =>
-                            handleSwitchVersion(index, versionNumber)
-                          }
-                          onViewVersions={() => handleViewVersions(index)}
-                          canRegenerate={
-                            index === messages.length - 1 ||
-                            messages[index + 1]?.role === "assistant"
-                          }
-                          availableModels={availableModelsForSelect}
-                        />
+                        <Box key={`${message.chatId || index}`} sx={{ position: 'relative' }}>
+                          <ChatMessage
+                            message={message}
+                            model={
+                              message.role === "assistant"
+                                ? selectedModelName
+                                : undefined
+                            }
+                            showHeader={true}
+                            timestamp={formatTimestamp(index)}
+                            messageIndex={index}
+                            onEditMessage={(content) =>
+                              handleEditMessage(index, content)
+                            }
+                            canEdit={message.role === 'user' && message.editInfo?.canEdit}
+                            canGenerate={false}
+                            availableModels={availableModelsForSelect}
+                          />
+                          
+                          {/* Version Navigation for messages with multiple versions */}
+                          {message.hasMultipleVersions && message.chatId && (
+                            <Box sx={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center',
+                              gap: 1,
+                              mt: 1,
+                              opacity: 0.7,
+                              '&:hover': { opacity: 1 }
+                            }}>
+                              <IconButton
+                                size="small"
+                                onClick={() => navigateVersion(message.chatId!, 'prev')}
+                                disabled={loading}
+                              >
+                                <ChevronLeft size={16} />
+                              </IconButton>
+                              
+                              <Chip
+                                label={`< ${currentVersions[message.chatId] || message.versionNumber} >`}
+                                size="small"
+                                variant="outlined"
+                                onClick={() => loadMessageVersions(message.chatId!)}
+                                sx={{ 
+                                  fontSize: '0.7rem',
+                                  height: 24,
+                                  cursor: 'pointer',
+                                  '&:hover': { bgcolor: 'action.hover' }
+                                }}
+                              />
+                              
+                              <IconButton
+                                size="small"
+                                onClick={() => navigateVersion(message.chatId!, 'next')}
+                                disabled={loading}
+                              >
+                                <ChevronRight size={16} />
+                              </IconButton>
+                            </Box>
+                          )}
+                        </Box>
                       ))}
 
                       {streamedResponse && (
@@ -855,6 +1008,7 @@ const ChatPage: React.FC = () => {
                           message={{
                             role: "assistant",
                             content: streamedResponse,
+                            editInfo: { canEdit: false, isEdited: false },
                           }}
                           isStreaming={true}
                           loading={loading}

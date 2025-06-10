@@ -106,41 +106,33 @@ export interface ChatMessage {
   userId?: string;
   model?: string;
   role: "user" | "assistant" | "system";
-  parentChatId?: string | null;
-  childChatIds?: string[];
+  content: string;
   messageIndex?: number;
   isActive?: boolean;
-  versionId?: string;
-  originalChatId?: string;
   versionNumber?: number;
   isCurrentVersion?: boolean;
-  branchPoint?: string | null;
-  versionHistory?: Array<{
-    content: string;
-    editedAt: string;
+  hasMultipleVersions?: boolean;
+  totalVersions?: number;
+  availableVersions?: Array<{
+    versionNumber: number;
+    isCurrentVersion: boolean;
+    createdAt: string;
+    contentPreview: string;
+    content?: string;
   }>;
+  editInfo?: {
+    canEdit: boolean;
+    lastEditedAt?: string;
+    isEdited: boolean;
+  };
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
   costUSD?: number;
   costIDR?: number;
-  content: string;
   filesUrl?: string[];
-  isEdited?: boolean;
-  editHistory?: Array<{
-    content: string;
-    editedAt: string;
-  }>;
   createdAt?: string;
   updatedAt?: string;
-  hasMultipleVersions?: boolean;
-  totalVersions?: number;
-  availableVersions?: Array<{
-    versionNumber: number;
-    versionId: string;
-    content: string;
-    createdAt: string;
-  }>;
 }
 
 export interface Conversation {
@@ -194,10 +186,18 @@ export interface ChatHistoryResponse {
 
 export interface ConversationChatsResponse {
   success: boolean;
-  results: ChatMessage[];
-  limit: string;
-  totalResults: number;
-  hasMore: boolean;
+  data: {
+    results: ChatMessage[];
+    lastEvaluatedKey?: string;
+    limit: number;
+    totalResults: number;
+    hasMore: boolean;
+    conversationInfo: {
+      conversationId: string;
+      totalMessages: number;
+      activeMessages: number;
+    };
+  };
 }
 
 export interface StreamRequest {
@@ -258,14 +258,37 @@ export interface ChatUpdateRequest {
 
 export interface EditMessageRequest {
   content: string;
-  model: string;
 }
 
 export interface EditMessageResponse {
   success: boolean;
+  message: string;
   data: {
-    editedUserChat: ChatMessage;
-    newAssistantChat: ChatMessage;
+    editedMessage: {
+      chatId: string;
+      content: string;
+      versionNumber: number;
+      isCurrentVersion: boolean;
+      hasMultipleVersions: boolean;
+      totalVersions: number;
+      availableVersions: Array<{
+        versionNumber: number;
+        isCurrentVersion: boolean;
+        createdAt: string;
+        content: string;
+      }>;
+    };
+    branchInfo: {
+      branchCreated: boolean;
+      deactivatedMessagesCount: number;
+      message: string;
+    };
+  };
+}
+
+export interface GenerateResponse {
+  success: boolean;
+  data: {
     usage: {
       prompt_tokens: number;
       completion_tokens: number;
@@ -273,6 +296,14 @@ export interface EditMessageResponse {
     cost: {
       usd: number;
       idr: number;
+    };
+    assistantMessage: {
+      chatId: string;
+      content: string;
+      versionNumber: number;
+      hasMultipleVersions: boolean;
+      totalVersions: number;
+      isNewVersion: boolean;
     };
   };
 }
@@ -283,9 +314,27 @@ export interface SwitchVersionRequest {
 
 export interface SwitchVersionResponse {
   success: boolean;
+  message: string;
   data: {
-    switchedToVersion: ChatMessage;
+    switchedToVersion: {
+      chatId: string;
+      content: string;
+      versionNumber: number;
+      isCurrentVersion: boolean;
+      hasMultipleVersions: boolean;
+      totalVersions: number;
+      availableVersions: Array<{
+        versionNumber: number;
+        isCurrentVersion: boolean;
+        createdAt: string;
+        content: string;
+      }>;
+    };
     conversationThread: ChatMessage[];
+    switchInfo: {
+      message: string;
+      affectedMessages: number;
+    };
   };
 }
 
@@ -298,11 +347,12 @@ export interface ChatVersionsResponse {
       versionNumber: number;
       isCurrentVersion: boolean;
       content: string;
+      contentPreview: string;
+      wordCount: number;
+      characterCount: number;
       createdAt: string;
-      versionHistory: Array<{
-        content: string;
-        editedAt: string;
-      }>;
+      updatedAt: string;
+      versionHistory: any[];
     }>;
   };
 }
