@@ -8,21 +8,22 @@ import {
   TextField,
   Button,
   Chip,
-  Divider,
   Menu,
   MenuItem,
+  Fade,
 } from '@mui/material';
 import { 
   Bot, 
   User, 
   Copy, 
   Check, 
-  Edit, 
+  Edit3, 
   X, 
   Save, 
   MoreVertical, 
   GitBranch,
-  Clock,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../types';
 import ReactMarkdown from 'react-markdown';
@@ -111,20 +112,27 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     }
   };
 
+  const isUser = message.role === 'user';
+
   return (
     <Box
       sx={{
         display: 'flex',
         flexDirection: 'column',
         gap: 1,
-        maxWidth: '85%',
-        alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
         width: '100%',
         position: 'relative',
       }}
     >
       {/* Version and Edit indicators */}
-      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 0.5 }}>
+      <Box sx={{ 
+        display: 'flex', 
+        gap: 1, 
+        alignItems: 'center', 
+        mb: 0.5,
+        justifyContent: isUser ? 'flex-start' : 'flex-start',
+        ml: isUser ? 0 : 6,
+      }}>
         {message.editInfo?.isEdited && (
           <Chip
             label="Edited"
@@ -157,236 +165,330 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         )}
       </Box>
 
-      {/* Chat Header */}
-      {showHeader && (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            px: 1,
-            py: 0.5,
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {message.role === 'assistant' ? (
-              <Bot size={16} color="#3b82f6" />
-            ) : (
-              <User size={16} color="#7c3aed" />
-            )}
-            <Typography variant="caption" color="text.secondary">
-              {message.role === 'assistant' ? 'AI Assistant' : 'You'}
-            </Typography>
-            {model && message.role === 'assistant' && (
-              <Chip
-                label={model}
-                size="small"
-                variant="outlined"
-                sx={{ 
-                  height: 20, 
-                  fontSize: '0.65rem',
-                  borderRadius: 1,
-                }}
-              />
-            )}
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <Typography variant="caption" color="text.secondary">
-              {formatTimestamp(message.createdAt)}
-            </Typography>
-            <IconButton size="small" onClick={handleMenuOpen}>
-              <MoreVertical size={14} />
-            </IconButton>
-          </Box>
-        </Box>
-      )}
-
       {/* Message Content */}
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+      <Box sx={{ 
+        display: 'flex', 
+        gap: 2, 
+        alignItems: 'flex-start',
+        flexDirection: isUser ? 'row' : 'row',
+        justifyContent: isUser ? 'flex-start' : 'flex-start',
+      }}>
+        {/* Avatar */}
         <Box
           sx={{
-            width: 32,
-            height: 32,
+            width: 36,
+            height: 36,
             borderRadius: '50%',
-            bgcolor: message.role === 'user' ? 'secondary.main' : 'primary.main',
+            bgcolor: isUser ? 'secondary.main' : 'primary.main',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: 'white',
             flexShrink: 0,
+            order: isUser ? 1 : 1,
           }}
         >
-          {message.role === 'assistant' ? <Bot size={20} /> : <User size={20} />}
+          {isUser ? <User size={20} /> : <Bot size={20} />}
         </Box>
 
-        <Paper
-          elevation={1}
-          sx={{
-            p: 2,
-            borderRadius: 2,
-            bgcolor: message.role === 'user' ? 'primary.main' : 'background.default',
-            color: message.role === 'user' ? 'white' : 'text.primary',
-            position: 'relative',
-            width: '100%',
-            border: message.role === 'assistant' ? '1px solid' : 'none',
-            borderColor: 'divider',
-          }}
-        >
-          {/* Action buttons for non-header mode */}
-          {!showHeader && !isEditing && (
-            <Box
-              sx={{
+        {/* Message Bubble */}
+        <Box sx={{ 
+          position: 'relative',
+          maxWidth: '85%',
+          minWidth: '200px',
+          order: isUser ? 2 : 2,
+        }}>
+          <Paper
+            elevation={1}
+            sx={{
+              p: 2,
+              borderRadius: 3,
+              bgcolor: isUser ? 'primary.main' : 'background.default',
+              color: isUser ? 'white' : 'text.primary',
+              position: 'relative',
+              width: 'fit-content',
+              maxWidth: '100%',
+              minWidth: '150px',
+              border: !isUser ? '1px solid' : 'none',
+              borderColor: 'divider',
+              // Custom bubble tail
+              '&::before': {
+                content: '""',
                 position: 'absolute',
-                top: 8,
-                right: 8,
-                display: 'flex',
-                gap: 0.5,
-                opacity: 0.7,
-                '&:hover': { opacity: 1 },
-              }}
-            >
-              <Tooltip title={copied ? 'Copied!' : 'Copy to clipboard'}>
-                <IconButton size="small" onClick={copyToClipboard}>
-                  {copied ? <Check size={16} /> : <Copy size={16} />}
-                </IconButton>
-              </Tooltip>
-
-              <IconButton size="small" onClick={handleMenuOpen}>
-                <MoreVertical size={16} />
-              </IconButton>
-            </Box>
-          )}
-
-          {isEditing ? (
-            <Box sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                multiline
-                value={editedContent}
-                onChange={(e) => setEditedContent(e.target.value)}
-                variant="outlined"
-                size="small"
-                sx={{ 
-                  mb: 2,
-                  '& .MuiOutlinedInput-root': {
-                    bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.1)' : 'background.paper',
-                    '& fieldset': {
-                      borderColor: message.role === 'user' ? 'rgba(255,255,255,0.3)' : 'divider',
-                    },
-                    '&:hover fieldset': {
-                      borderColor: message.role === 'user' ? 'rgba(255,255,255,0.5)' : 'primary.main',
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderColor: message.role === 'user' ? 'white' : 'primary.main',
-                    },
-                  },
-                  '& .MuiInputBase-input': {
-                    color: message.role === 'user' ? 'white' : 'text.primary',
-                  },
-                }}
-                placeholder={message.role === 'user' ? 'Edit your message...' : 'Edit assistant response...'}
-              />
-              
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-                <Button
-                  size="small"
-                  startIcon={<X size={16} />}
-                  onClick={handleCancel}
+                top: 12,
+                [isUser ? 'left' : 'right']: -8,
+                width: 0,
+                height: 0,
+                borderStyle: 'solid',
+                borderWidth: isUser 
+                  ? '8px 8px 8px 0'
+                  : '8px 0 8px 8px',
+                borderColor: isUser 
+                  ? `transparent ${isUser ? 'primary.main' : 'background.default'} transparent transparent`
+                  : `transparent transparent transparent ${!isUser ? (darkMode ? '#1e293b' : '#f8fafc') : 'primary.main'}`,
+              },
+            }}
+          >
+            {isEditing ? (
+              <Box sx={{ width: '100%' }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  value={editedContent}
+                  onChange={(e) => setEditedContent(e.target.value)}
                   variant="outlined"
-                  sx={{
-                    color: message.role === 'user' ? 'white' : 'text.primary',
-                    borderColor: message.role === 'user' ? 'rgba(255,255,255,0.5)' : 'divider',
-                    '&:hover': {
-                      borderColor: message.role === 'user' ? 'white' : 'primary.main',
-                      bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.1)' : 'action.hover',
-                    },
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
                   size="small"
-                  startIcon={<Save size={16} />}
-                  onClick={handleSave}
-                  variant="contained"
-                  disabled={!editedContent.trim()}
-                  sx={{
-                    bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.2)' : 'primary.main',
-                    color: message.role === 'user' ? 'white' : 'white',
-                    '&:hover': {
-                      bgcolor: message.role === 'user' ? 'rgba(255,255,255,0.3)' : 'primary.dark',
+                  sx={{ 
+                    mb: 2,
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: isUser ? 'rgba(255,255,255,0.1)' : 'background.paper',
+                      '& fieldset': {
+                        borderColor: isUser ? 'rgba(255,255,255,0.3)' : 'divider',
+                      },
+                      '&:hover fieldset': {
+                        borderColor: isUser ? 'rgba(255,255,255,0.5)' : 'primary.main',
+                      },
+                      '&.Mui-focused fieldset': {
+                        borderColor: isUser ? 'white' : 'primary.main',
+                      },
+                    },
+                    '& .MuiInputBase-input': {
+                      color: isUser ? 'white' : 'text.primary',
                     },
                   }}
-                >
-                  Save & Generate
-                </Button>
+                  placeholder={isUser ? 'Edit your message...' : 'Edit assistant response...'}
+                />
+                
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                  <Button
+                    size="small"
+                    startIcon={<X size={16} />}
+                    onClick={handleCancel}
+                    variant="outlined"
+                    sx={{
+                      color: isUser ? 'white' : 'text.primary',
+                      borderColor: isUser ? 'rgba(255,255,255,0.5)' : 'divider',
+                      '&:hover': {
+                        borderColor: isUser ? 'white' : 'primary.main',
+                        bgcolor: isUser ? 'rgba(255,255,255,0.1)' : 'action.hover',
+                      },
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="small"
+                    startIcon={<Save size={16} />}
+                    onClick={handleSave}
+                    variant="contained"
+                    disabled={!editedContent.trim()}
+                    sx={{
+                      bgcolor: isUser ? 'rgba(255,255,255,0.2)' : 'primary.main',
+                      color: isUser ? 'white' : 'white',
+                      '&:hover': {
+                        bgcolor: isUser ? 'rgba(255,255,255,0.3)' : 'primary.dark',
+                      },
+                    }}
+                  >
+                    Save & Generate
+                  </Button>
+                </Box>
               </Box>
-            </Box>
-          ) : message.role === 'user' ? (
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', pr: showHeader ? 0 : 6 }}>
+            ) : isUser ? (
+              <Typography variant="body1" sx={{ 
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                lineHeight: 1.5,
+              }}>
                 {message.content}
               </Typography>
-            </Box>
-          ) : (
-            <Box sx={{ pr: showHeader ? 0 : 6 }}>
-              <ReactMarkdown
-                components={{
-                  code({ node, inline, className, children, ...props }) {
-                    const match = /language-(\w+)/.exec(className || '');
-                    return !inline && match ? (
-                      <SyntaxHighlighter
-                        style={darkMode ? atomDark : oneLight}
-                        language={match[1]}
-                        PreTag="div"
-                        {...props}
-                      >
-                        {String(children).replace(/\n$/, '')}
-                      </SyntaxHighlighter>
-                    ) : (
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    );
-                  },
+            ) : (
+              <Box>
+                <ReactMarkdown
+                  components={{
+                    code({ node, inline, className, children, ...props }) {
+                      const match = /language-(\w+)/.exec(className || '');
+                      return !inline && match ? (
+                        <SyntaxHighlighter
+                          style={darkMode ? atomDark : oneLight}
+                          language={match[1]}
+                          PreTag="div"
+                          {...props}
+                        >
+                          {String(children).replace(/\n$/, '')}
+                        </SyntaxHighlighter>
+                      ) : (
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      );
+                    },
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              </Box>
+            )}
+            
+            {isStreaming && loading && (
+              <Box sx={{ display: 'inline-block', ml: 1 }}>
+                <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                  typing...
+                </Typography>
+              </Box>
+            )}
+          </Paper>
+
+          {/* Action buttons at the bottom of the message - ChatGPT style */}
+          {!isEditing && (
+            <Fade in={true}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  mt: 1,
+                  justifyContent: 'flex-start',
+                  opacity: 0.6,
+                  '&:hover': { opacity: 1 },
+                  transition: 'opacity 0.2s ease',
                 }}
               >
-                {message.content}
-              </ReactMarkdown>
-            </Box>
-          )}
-          
-          {isStreaming && loading && (
-            <Box sx={{ display: 'inline-block', ml: 1 }}>
-              <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                typing...
-              </Typography>
-            </Box>
-          )}
-        </Paper>
-      </Box>
+                {/* Copy button */}
+                <Tooltip title={copied ? 'Copied!' : 'Copy message'}>
+                  <IconButton
+                    size="small"
+                    onClick={copyToClipboard}
+                    sx={{
+                      width: 28,
+                      height: 28,
+                      bgcolor: 'transparent',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      color: 'text.secondary',
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                        borderColor: 'primary.main',
+                        color: 'primary.main',
+                      },
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                  </IconButton>
+                </Tooltip>
 
-      {/* Context Menu */}
-      <Menu
-        anchorEl={menuAnchorEl}
-        open={Boolean(menuAnchorEl)}
-        onClose={handleMenuClose}
-        PaperProps={{
-          sx: { minWidth: 180 }
-        }}
-      >
-        <MenuItem onClick={copyToClipboard}>
-          <Copy size={16} style={{ marginRight: 8 }} />
-          Copy
-        </MenuItem>
-        
-        {canEdit && message.editInfo?.canEdit && (
-          <MenuItem onClick={handleEdit}>
-            <Edit size={16} style={{ marginRight: 8 }} />
-            Edit & Regenerate
-          </MenuItem>
-        )}
-      </Menu>
+                {/* Edit button for user messages - using pencil icon */}
+                {canEdit && message.editInfo?.canEdit && isUser && (
+                  <Tooltip title="Edit message">
+                    <IconButton
+                      size="small"
+                      onClick={handleEdit}
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        bgcolor: 'transparent',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        color: 'text.secondary',
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                          borderColor: 'primary.main',
+                          color: 'primary.main',
+                        },
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <Edit3 size={14} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                {/* Version navigation for messages with multiple versions - ChatGPT style */}
+                {message.hasMultipleVersions && (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      bgcolor: 'transparent',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        bgcolor: 'action.hover',
+                      },
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <Tooltip title="Previous version">
+                      <IconButton
+                        size="small"
+                        sx={{
+                          width: 24,
+                          height: 24,
+                          color: 'text.secondary',
+                          '&:hover': {
+                            color: 'primary.main',
+                            bgcolor: 'transparent',
+                          },
+                        }}
+                      >
+                        <ChevronLeft size={12} />
+                      </IconButton>
+                    </Tooltip>
+
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        fontWeight: 600,
+                        color: 'text.secondary',
+                        px: 0.5,
+                        fontSize: '0.75rem',
+                        minWidth: '20px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {message.versionNumber}
+                    </Typography>
+
+                    <Tooltip title="Next version">
+                      <IconButton
+                        size="small"
+                        sx={{
+                          width: 24,
+                          height: 24,
+                          color: 'text.secondary',
+                          '&:hover': {
+                            color: 'primary.main',
+                            bgcolor: 'transparent',
+                          },
+                        }}
+                      >
+                        <ChevronRight size={12} />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                )}
+
+                {/* Timestamp */}
+                <Typography 
+                  variant="caption" 
+                  color="text.secondary"
+                  sx={{ 
+                    ml: 'auto',
+                    fontSize: '0.7rem',
+                    opacity: 0.6,
+                  }}
+                >
+                  {formatTimestamp(message.createdAt)}
+                </Typography>
+              </Box>
+            </Fade>
+          )}
+        </Box>
+      </Box>
     </Box>
   );
 };
