@@ -17,7 +17,6 @@ import {
   User, 
   Copy, 
   Check, 
-  Edit3, 
   X, 
   Save, 
   MoreVertical, 
@@ -26,6 +25,7 @@ import {
   ChevronRight,
   RotateCcw,
   History,
+  PenTool,
 } from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../types';
 import ReactMarkdown from 'react-markdown';
@@ -402,7 +402,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                         transition: 'all 0.2s ease',
                       }}
                     >
-                      <Edit3 size={14} />
+                      <PenTool size={14} />
                     </IconButton>
                   </Tooltip>
                 )}
