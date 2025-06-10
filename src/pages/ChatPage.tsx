@@ -41,6 +41,7 @@ import {
   editMessageAndComplete,
   switchToVersion,
   getChatVersions,
+  generateResponse,
 } from "../services/conversations";
 import {
   LLMModel,
@@ -554,6 +555,119 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  // Regenerate response for assistant messages
+  const handleRegenerateResponse = async (messageIndex: number) => {
+    const message = messages[messageIndex];
+    if (!message?.chatId || message.role !== 'assistant') {
+      console.error("Invalid message for regeneration");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setStreamedResponse("");
+
+      // Remove the current assistant message temporarily
+      const messagesToKeep = messages.slice(0, messageIndex);
+      setMessages(messagesToKeep);
+
+      // Call regenerate API
+      const stream = await generateResponse(message.chatId, selectedModel);
+
+      if (!stream) throw new Error("Failed to initialize regenerate stream");
+
+      const reader = stream.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let accumulatedContent = "";
+      let regenerateResponse: any = null;
+
+      const processStream = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (regenerateResponse?.assistantMessage) {
+              const newAssistantMessage: ChatMessageType = {
+                role: "assistant",
+                content: accumulatedContent,
+                chatId: regenerateResponse.assistantMessage.chatId,
+                messageIndex: messageIndex,
+                isActive: true,
+                isCurrentVersion: true,
+                versionNumber: regenerateResponse.assistantMessage.versionNumber,
+                totalVersions: regenerateResponse.assistantMessage.totalVersions,
+                hasMultipleVersions: regenerateResponse.assistantMessage.hasMultipleVersions,
+                editInfo: { canEdit: false, isEdited: false },
+              };
+
+              // Add the new assistant message
+              setMessages(prev => [...prev, newAssistantMessage]);
+            }
+
+            setStreamedResponse("");
+            setSnackbarMessage("Response regenerated successfully");
+            setSnackbarOpen(true);
+            setRefreshHistoryTrigger((prev) => prev + 1);
+            break;
+          }
+
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              let jsonStr = line.slice(5).trim();
+
+              if (jsonStr.startsWith("data: "))
+                jsonStr = jsonStr.slice(5).trim();
+
+              if (jsonStr === "[DONE]") continue;
+
+              try {
+                const data = JSON.parse(jsonStr);
+
+                if (data.assistantMessage) {
+                  regenerateResponse = data;
+                }
+
+                if (data.choices !== null) {
+                  if (data.choices?.[0]?.delta?.content) {
+                    accumulatedContent += data.choices[0].delta.content;
+                    setStreamedResponse(
+                      (prev) => prev + data.choices[0].delta.content
+                    );
+                  }
+                }
+              } catch (e) {
+                console.error("Error parsing JSON:", e);
+              }
+            }
+          }
+        }
+      };
+
+      // Add assistant message placeholder
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "",
+        editInfo: { canEdit: false, isEdited: false },
+      }]);
+
+      await processStream();
+    } catch (error: any) {
+      console.error("Regenerate response error:", error);
+      setError(error.message || "Failed to regenerate response");
+      setSnackbarMessage("Failed to regenerate response");
+      setSnackbarOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load versions for a specific message
   const loadMessageVersions = async (chatId: string) => {
     try {
@@ -954,6 +1068,11 @@ const ChatPage: React.FC = () => {
                             onEditMessage={(content) =>
                               handleEditMessage(index, content)
                             }
+                            onRegenerateResponse={
+                              message.role === "assistant" 
+                                ? () => handleRegenerateResponse(index)
+                                : undefined
+                            }
                             canEdit={message.role === 'user' && message.editInfo?.canEdit}
                             canGenerate={false}
                             availableModels={availableModelsForSelect}
@@ -964,9 +1083,11 @@ const ChatPage: React.FC = () => {
                             <Box sx={{ 
                               display: 'flex', 
                               alignItems: 'center', 
-                              justifyContent: 'center',
+                              justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
                               gap: 1,
                               mt: 1,
+                              mr: message.role === 'user' ? 6 : 0,
+                              ml: message.role === 'user' ? 0 : 6,
                               opacity: 0.7,
                               '&:hover': { opacity: 1 }
                             }}>
@@ -979,7 +1100,7 @@ const ChatPage: React.FC = () => {
                               </IconButton>
                               
                               <Chip
-                                label={`< ${currentVersions[message.chatId] || message.versionNumber} >`}
+                                label={`${currentVersions[message.chatId] || message.versionNumber}/${message.totalVersions}`}
                                 size="small"
                                 variant="outlined"
                                 onClick={() => loadMessageVersions(message.chatId!)}

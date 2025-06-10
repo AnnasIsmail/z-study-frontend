@@ -24,6 +24,8 @@ import {
   GitBranch,
   ChevronLeft,
   ChevronRight,
+  RotateCcw,
+  History,
 } from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../types';
 import ReactMarkdown from 'react-markdown';
@@ -37,7 +39,7 @@ interface ChatMessageProps {
   loading?: boolean;
   darkMode?: boolean;
   onEditMessage?: (content: string) => void;
-  onGenerateResponse?: (model: string) => void;
+  onRegenerateResponse?: () => void;
   onSwitchVersion?: (versionNumber: number) => void;
   onViewVersions?: () => void;
   model?: string;
@@ -55,6 +57,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   loading = false,
   darkMode = false,
   onEditMessage,
+  onRegenerateResponse,
   model,
   showHeader = false,
   timestamp,
@@ -130,7 +133,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         gap: 1, 
         alignItems: 'center', 
         mb: 0.5,
-        justifyContent: isUser ? 'flex-start' : 'flex-start',
+        justifyContent: isUser ? 'flex-end' : 'flex-start',
+        mr: isUser ? 6 : 0,
         ml: isUser ? 0 : 6,
       }}>
         {message.editInfo?.isEdited && (
@@ -170,7 +174,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         display: 'flex', 
         gap: 2, 
         alignItems: 'flex-start',
-        flexDirection: isUser ? 'row' : 'row',
+        flexDirection: isUser ? 'row-reverse' : 'row',
         justifyContent: isUser ? 'flex-start' : 'flex-start',
       }}>
         {/* Avatar */}
@@ -185,7 +189,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             justifyContent: 'center',
             color: 'white',
             flexShrink: 0,
-            order: isUser ? 1 : 1,
           }}
         >
           {isUser ? <User size={20} /> : <Bot size={20} />}
@@ -196,7 +199,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           position: 'relative',
           maxWidth: '85%',
           minWidth: '200px',
-          order: isUser ? 2 : 2,
         }}>
           <Paper
             elevation={1}
@@ -211,21 +213,22 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               minWidth: '150px',
               border: !isUser ? '1px solid' : 'none',
               borderColor: 'divider',
+              ml: isUser ? 'auto' : 0,
               // Custom bubble tail
               '&::before': {
                 content: '""',
                 position: 'absolute',
                 top: 12,
-                [isUser ? 'left' : 'right']: -8,
+                [isUser ? 'right' : 'left']: -8,
                 width: 0,
                 height: 0,
                 borderStyle: 'solid',
                 borderWidth: isUser 
-                  ? '8px 8px 8px 0'
-                  : '8px 0 8px 8px',
+                  ? '8px 0 8px 8px'
+                  : '8px 8px 8px 0',
                 borderColor: isUser 
-                  ? `transparent ${isUser ? 'primary.main' : 'background.default'} transparent transparent`
-                  : `transparent transparent transparent ${!isUser ? (darkMode ? '#1e293b' : '#f8fafc') : 'primary.main'}`,
+                  ? `transparent transparent transparent ${isUser ? 'primary.main' : 'background.default'}`
+                  : `transparent ${!isUser ? (darkMode ? '#1e293b' : '#f8fafc') : 'primary.main'} transparent transparent`,
               },
             }}
           >
@@ -339,7 +342,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             )}
           </Paper>
 
-          {/* Action buttons at the bottom of the message - ChatGPT style */}
+          {/* Action buttons at the bottom of the message */}
           {!isEditing && (
             <Fade in={true}>
               <Box
@@ -348,7 +351,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   alignItems: 'center',
                   gap: 1,
                   mt: 1,
-                  justifyContent: 'flex-start',
+                  justifyContent: isUser ? 'flex-end' : 'flex-start',
                   opacity: 0.6,
                   '&:hover': { opacity: 1 },
                   transition: 'opacity 0.2s ease',
@@ -378,7 +381,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   </IconButton>
                 </Tooltip>
 
-                {/* Edit button for user messages - using pencil icon */}
+                {/* Edit button for user messages */}
                 {canEdit && message.editInfo?.canEdit && isUser && (
                   <Tooltip title="Edit message">
                     <IconButton
@@ -404,7 +407,33 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   </Tooltip>
                 )}
 
-                {/* Version navigation for messages with multiple versions - ChatGPT style */}
+                {/* Regenerate button for assistant messages */}
+                {!isUser && onRegenerateResponse && (
+                  <Tooltip title="Regenerate response">
+                    <IconButton
+                      size="small"
+                      onClick={onRegenerateResponse}
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        bgcolor: 'transparent',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        color: 'text.secondary',
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                          borderColor: 'primary.main',
+                          color: 'primary.main',
+                        },
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                {/* Version navigation for messages with multiple versions */}
                 {message.hasMultipleVersions && (
                   <Box
                     sx={{
@@ -470,6 +499,31 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                       </IconButton>
                     </Tooltip>
                   </Box>
+                )}
+
+                {/* Version history button */}
+                {message.hasMultipleVersions && (
+                  <Tooltip title="View all versions">
+                    <IconButton
+                      size="small"
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        bgcolor: 'transparent',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        color: 'text.secondary',
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                          borderColor: 'primary.main',
+                          color: 'primary.main',
+                        },
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <History size={14} />
+                    </IconButton>
+                  </Tooltip>
                 )}
 
                 {/* Timestamp */}
