@@ -49,6 +49,7 @@ import {
   Conversation,
   StreamResponse,
 } from "../types";
+import { ChatVersion } from "../types/versioning";
 import { useNavigate, useParams } from "react-router-dom";
 import ChatHistoryXS from "../components/Chat/ChatHistoryXS";
 
@@ -150,44 +151,84 @@ const ChatPage: React.FC = () => {
       });
 
       if (response.success && response.data) {
-        const chatMessages: ChatMessageType[] = response.data.results.map(
-          (chat) => ({
-            chatId: chat.chatId,
-            role: chat.role as "user" | "assistant",
-            content: chat.content,
-            messageIndex: chat.messageIndex,
-            isActive: chat.isActive,
-            versionNumber: chat.versionNumber,
-            isCurrentVersion: chat.isCurrentVersion,
-            hasMultipleVersions: chat.hasMultipleVersions,
-            totalVersions: chat.totalVersions,
-            editInfo: chat.editInfo,
-            createdAt: chat.createdAt,
-            updatedAt: chat.updatedAt,
-          })
-        );
-
-        if (loadMore) {
-          // Prepend older messages (since we're using desc order)
-          setMessages(prev => [...chatMessages.reverse(), ...prev]);
-        } else {
-          // Initial load - reverse to show chronological order
-          setMessages(chatMessages.reverse());
+        // Check if we got chat messages or conversation metadata
+        if (response.data.results && response.data.results.length > 0) {
+          // Check if the first result has chat message properties
+          const firstResult = response.data.results[0];
           
-          // Set conversation info
+          if (firstResult.role && firstResult.content) {
+            // This is chat messages data
+            const chatMessages: ChatMessageType[] = response.data.results.map(
+              (chat) => ({
+                chatId: chat.chatId,
+                role: chat.role as "user" | "assistant",
+                content: chat.content,
+                messageIndex: chat.messageIndex,
+                isActive: chat.isActive,
+                
+                // Enhanced versioning support
+                userVersionNumber: chat.userVersionNumber,
+                assistantVersionNumber: chat.assistantVersionNumber,
+                versionNumber: chat.versionNumber, // Legacy support
+                isCurrentVersion: chat.isCurrentVersion,
+                hasMultipleVersions: chat.hasMultipleVersions,
+                totalVersions: chat.totalVersions,
+                linkedUserChatId: chat.linkedUserChatId,
+                originalChatId: chat.originalChatId,
+                
+                editInfo: chat.editInfo,
+                createdAt: chat.createdAt,
+                updatedAt: chat.updatedAt,
+              })
+            );
+
+            if (loadMore) {
+              // Prepend older messages (since we're using desc order)
+              setMessages(prev => [...chatMessages.reverse(), ...prev]);
+            } else {
+              // Initial load - reverse to show chronological order
+              setMessages(chatMessages.reverse());
+              
+              // Set conversation info
+              setSelectedConversation({
+                conversationId: convId,
+                title: `Conversation ${convId.slice(0, 8)}...`,
+                lastMessageAt:
+                  chatMessages[chatMessages.length - 1]?.createdAt ||
+                  new Date().toISOString(),
+                createdAt: chatMessages[0]?.createdAt || new Date().toISOString(),
+              });
+            }
+
+            // Update pagination info
+            setHasMoreMessages(response.data.hasMore);
+            setLastEvaluatedKey(response.data.lastEvaluatedKey);
+          } else {
+            // This is conversation metadata, not chat messages
+            console.warn("Received conversation metadata instead of chat messages");
+            setError("No chat messages found for this conversation");
+            setMessages([]);
+            
+            // Set conversation info from metadata
+            const conversationData = firstResult;
+            setSelectedConversation({
+              conversationId: convId,
+              title: conversationData.title || `Conversation ${convId.slice(0, 8)}...`,
+              lastMessageAt: conversationData.lastMessageAt || new Date().toISOString(),
+              createdAt: conversationData.createdAt || new Date().toISOString(),
+            });
+          }
+        } else {
+          // No results found
+          setMessages([]);
           setSelectedConversation({
             conversationId: convId,
             title: `Conversation ${convId.slice(0, 8)}...`,
-            lastMessageAt:
-              chatMessages[chatMessages.length - 1]?.createdAt ||
-              new Date().toISOString(),
-            createdAt: chatMessages[0]?.createdAt || new Date().toISOString(),
+            lastMessageAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
           });
         }
-
-        // Update pagination info
-        setHasMoreMessages(response.data.hasMore);
-        setLastEvaluatedKey(response.data.lastEvaluatedKey);
+        
         setOptimizationInfo(null);
       }
     } catch (error: any) {
@@ -283,7 +324,8 @@ const ChatPage: React.FC = () => {
                 messageIndex: messages.length,
                 isActive: true,
                 isCurrentVersion: true,
-                versionNumber: 1,
+                userVersionNumber: streamResponse.newChats.userChat.userVersionNumber,
+                versionNumber: streamResponse.newChats.userChat.userVersionNumber, // Legacy
                 totalVersions: 1,
                 hasMultipleVersions: false,
               };
@@ -295,9 +337,11 @@ const ChatPage: React.FC = () => {
                 messageIndex: messages.length + 1,
                 isActive: true,
                 isCurrentVersion: true,
-                versionNumber: 1,
+                assistantVersionNumber: streamResponse.newChats.assistantChat.assistantVersionNumber,
+                versionNumber: streamResponse.newChats.assistantChat.assistantVersionNumber, // Legacy
                 totalVersions: 1,
                 hasMultipleVersions: false,
+                linkedUserChatId: streamResponse.newChats.assistantChat.linkedUserChatId,
                 editInfo: { canEdit: false, isEdited: false },
               };
 
@@ -398,7 +442,7 @@ const ChatPage: React.FC = () => {
   };
 
   // Enhanced edit with auto-completion
-  const handleEditMessage = async (messageIndex: number, newContent: string) => {
+  const handleEditMessage = async (messageIndex: number, newContent: string, autoComplete?: boolean) => {
     const message = messages[messageIndex];
     if (!message?.chatId) {
       console.error("Message chatId not found");
@@ -422,123 +466,135 @@ const ChatPage: React.FC = () => {
         },
       };
       
-      // Remove subsequent messages temporarily
-      const messagesToKeep = updatedMessages.slice(0, messageIndex + 1);
+      // Remove subsequent messages temporarily if auto-completing
+      const messagesToKeep = autoComplete 
+        ? updatedMessages.slice(0, messageIndex + 1)
+        : updatedMessages;
       setMessages(messagesToKeep);
 
-      // Call edit and complete API
-      const stream = await editMessageAndComplete(message.chatId, {
-        content: newContent,
-        model: selectedModel,
-        autoComplete: true,
-      });
+      if (autoComplete && message.role === 'user') {
+        // Call edit and complete API for user messages
+        const stream = await editMessageAndComplete(message.chatId, {
+          content: newContent,
+          model: selectedModel,
+          autoComplete: true,
+        });
 
-      if (!stream) throw new Error("Failed to initialize edit stream");
+        if (!stream) throw new Error("Failed to initialize edit stream");
 
-      const reader = stream.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-      let accumulatedContent = "";
-      let editResponse: any = null;
+        const reader = stream.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+        let accumulatedContent = "";
+        let editResponse: any = null;
 
-      const processStream = async () => {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            if (editResponse?.assistantMessage) {
-              const newAssistantMessage: ChatMessageType = {
-                role: "assistant",
-                content: accumulatedContent,
-                chatId: editResponse.assistantMessage.chatId,
-                messageIndex: messageIndex + 1,
-                isActive: true,
-                isCurrentVersion: true,
-                versionNumber: editResponse.assistantMessage.versionNumber,
-                totalVersions: editResponse.assistantMessage.totalVersions,
-                hasMultipleVersions: editResponse.assistantMessage.hasMultipleVersions,
-                editInfo: { canEdit: false, isEdited: false },
-              };
-
-              // Update final messages
-              setMessages(prev => {
-                const finalMessages = [...prev];
-                // Update edited message with final data
-                finalMessages[messageIndex] = {
-                  ...finalMessages[messageIndex],
-                  versionNumber: editResponse.editedMessage.versionNumber,
-                  hasMultipleVersions: editResponse.editedMessage.hasMultipleVersions,
-                  totalVersions: editResponse.editedMessage.totalVersions,
+        const processStream = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              if (editResponse?.assistantMessage) {
+                const newAssistantMessage: ChatMessageType = {
+                  role: "assistant",
+                  content: accumulatedContent,
+                  chatId: editResponse.assistantMessage.chatId,
+                  messageIndex: messageIndex + 1,
+                  isActive: true,
+                  isCurrentVersion: true,
+                  assistantVersionNumber: editResponse.assistantMessage.assistantVersionNumber,
+                  versionNumber: editResponse.assistantMessage.assistantVersionNumber, // Legacy
+                  totalVersions: editResponse.assistantMessage.totalVersions,
+                  hasMultipleVersions: editResponse.assistantMessage.hasMultipleVersions,
+                  linkedUserChatId: editResponse.assistantMessage.linkedUserChatId,
+                  editInfo: { canEdit: false, isEdited: false },
                 };
-                // Add new assistant response
-                finalMessages.push(newAssistantMessage);
-                return finalMessages;
-              });
+
+                // Update final messages
+                setMessages(prev => {
+                  const finalMessages = [...prev];
+                  // Update edited message with final data
+                  finalMessages[messageIndex] = {
+                    ...finalMessages[messageIndex],
+                    userVersionNumber: editResponse.editedMessage.userVersionNumber,
+                    versionNumber: editResponse.editedMessage.userVersionNumber, // Legacy
+                    hasMultipleVersions: editResponse.editedMessage.hasMultipleVersions,
+                    totalVersions: editResponse.editedMessage.totalVersions,
+                  };
+                  // Add new assistant response
+                  finalMessages.push(newAssistantMessage);
+                  return finalMessages;
+                });
+              }
+
+              setStreamedResponse("");
+              setSnackbarMessage("Message edited and response generated successfully");
+              setSnackbarOpen(true);
+              setRefreshHistoryTrigger((prev) => prev + 1);
+              break;
             }
 
-            setStreamedResponse("");
-            setSnackbarMessage("Message edited and response generated successfully");
-            setSnackbarOpen(true);
-            setRefreshHistoryTrigger((prev) => prev + 1);
-            break;
-          }
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
 
-          const chunk = decoder.decode(value, { stream: true });
-          buffer += chunk;
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
 
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                let jsonStr = line.slice(5).trim();
 
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              let jsonStr = line.slice(5).trim();
+                if (jsonStr.startsWith("data: "))
+                  jsonStr = jsonStr.slice(5).trim();
 
-              if (jsonStr.startsWith("data: "))
-                jsonStr = jsonStr.slice(5).trim();
+                if (jsonStr === "[DONE]") continue;
 
-              if (jsonStr === "[DONE]") continue;
+                try {
+                  const data = JSON.parse(jsonStr);
 
-              try {
-                const data = JSON.parse(jsonStr);
-
-                if (data.editedMessage) {
-                  editResponse = data;
-                  // Update the edited message info
-                  setMessages(prev => {
-                    const updated = [...prev];
-                    updated[messageIndex] = {
-                      ...updated[messageIndex],
-                      versionNumber: data.editedMessage.versionNumber,
-                      hasMultipleVersions: data.editedMessage.hasMultipleVersions,
-                      totalVersions: data.editedMessage.totalVersions,
-                    };
-                    return updated;
-                  });
-                }
-
-                if (data.choices !== null) {
-                  if (data.choices?.[0]?.delta?.content) {
-                    accumulatedContent += data.choices[0].delta.content;
-                    setStreamedResponse(
-                      (prev) => prev + data.choices[0].delta.content
-                    );
+                  if (data.editedMessage) {
+                    editResponse = data;
+                    // Update the edited message info
+                    setMessages(prev => {
+                      const updated = [...prev];
+                      updated[messageIndex] = {
+                        ...updated[messageIndex],
+                        userVersionNumber: data.editedMessage.userVersionNumber,
+                        versionNumber: data.editedMessage.userVersionNumber, // Legacy
+                        hasMultipleVersions: data.editedMessage.hasMultipleVersions,
+                        totalVersions: data.editedMessage.totalVersions,
+                      };
+                      return updated;
+                    });
                   }
+
+                  if (data.choices !== null) {
+                    if (data.choices?.[0]?.delta?.content) {
+                      accumulatedContent += data.choices[0].delta.content;
+                      setStreamedResponse(
+                        (prev) => prev + data.choices[0].delta.content
+                      );
+                    }
+                  }
+                } catch (e) {
+                  console.error("Error parsing JSON:", e);
                 }
-              } catch (e) {
-                console.error("Error parsing JSON:", e);
               }
             }
           }
-        }
-      };
+        };
 
-      // Add assistant message placeholder
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "",
-        editInfo: { canEdit: false, isEdited: false },
-      }]);
+        // Add assistant message placeholder
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: "",
+          editInfo: { canEdit: false, isEdited: false },
+        }]);
 
-      await processStream();
+        await processStream();
+      } else {
+        // Simple edit without auto-completion
+        setSnackbarMessage("Message edited successfully");
+        setSnackbarOpen(true);
+      }
     } catch (error: any) {
       console.error("Edit message error:", error);
       setError(error.message || "Failed to edit message");
@@ -557,6 +613,13 @@ const ChatPage: React.FC = () => {
       return;
     }
 
+    // Find the linked user message
+    const linkedUserChatId = message.linkedUserChatId;
+    if (!linkedUserChatId) {
+      console.error("No linked user message found for regeneration");
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
@@ -566,8 +629,8 @@ const ChatPage: React.FC = () => {
       const messagesToKeep = messages.slice(0, messageIndex);
       setMessages(messagesToKeep);
 
-      // Call regenerate API
-      const stream = await generateResponse(message.chatId, selectedModel);
+      // Call regenerate API using the linked user chat ID
+      const stream = await generateResponse(linkedUserChatId, selectedModel);
 
       if (!stream) throw new Error("Failed to initialize regenerate stream");
 
@@ -589,9 +652,11 @@ const ChatPage: React.FC = () => {
                 messageIndex: messageIndex,
                 isActive: true,
                 isCurrentVersion: true,
-                versionNumber: regenerateResponse.assistantMessage.versionNumber,
+                assistantVersionNumber: regenerateResponse.assistantMessage.assistantVersionNumber,
+                versionNumber: regenerateResponse.assistantMessage.assistantVersionNumber, // Legacy
                 totalVersions: regenerateResponse.assistantMessage.totalVersions,
                 hasMultipleVersions: regenerateResponse.assistantMessage.hasMultipleVersions,
+                linkedUserChatId: regenerateResponse.assistantMessage.linkedUserChatId,
                 editInfo: { canEdit: false, isEdited: false },
               };
 
@@ -663,18 +728,34 @@ const ChatPage: React.FC = () => {
   };
 
   // Load versions for a specific message
-  const loadMessageVersions = async (chatId: string) => {
+  const loadMessageVersions = async (chatId: string): Promise<ChatVersion[]> => {
     try {
-      const response = await getChatVersions(chatId);
+      // Find the message to determine its role
+      const message = messages.find(m => m.chatId === chatId);
+      if (!message) return [];
+
+      const response = await getChatVersions(chatId, {
+        versionType: message.role,
+      });
+      
       if (response.success) {
         return response.data.versions.map(version => ({
-          versionNumber: version.versionNumber,
+          chatId: version.chatId,
+          versionId: version.versionId,
+          versionNumber: message.role === 'user' 
+            ? version.userVersionNumber || version.versionNumber
+            : version.assistantVersionNumber || version.versionNumber,
+          userVersionNumber: version.userVersionNumber,
+          assistantVersionNumber: version.assistantVersionNumber,
           isCurrentVersion: version.isCurrentVersion,
           content: version.content,
           contentPreview: version.contentPreview,
           createdAt: version.createdAt,
           wordCount: version.wordCount,
           characterCount: version.characterCount,
+          linkedUserChatId: version.linkedUserChatId,
+          originalChatId: version.originalChatId,
+          updatedAt: version.updatedAt,
         }));
       }
       return [];
@@ -691,7 +772,10 @@ const ChatPage: React.FC = () => {
 
     try {
       setLoading(true);
-      const response = await switchToVersion(message.chatId, { versionNumber });
+      const response = await switchToVersion(message.chatId, { 
+        versionNumber,
+        versionType: message.role,
+      });
 
       if (response.success) {
         // Update the message content in UI
@@ -699,8 +783,10 @@ const ChatPage: React.FC = () => {
           index === messageIndex 
             ? { 
                 ...msg, 
-                content: response.data.switchedToVersion.content, 
-                versionNumber: response.data.switchedToVersion.versionNumber,
+                content: response.data.switchedToVersion.content,
+                userVersionNumber: response.data.switchedToVersion.userVersionNumber,
+                assistantVersionNumber: response.data.switchedToVersion.assistantVersionNumber,
+                versionNumber: response.data.switchedToVersion.versionNumber, // Legacy
                 isCurrentVersion: response.data.switchedToVersion.isCurrentVersion,
                 hasMultipleVersions: response.data.switchedToVersion.hasMultipleVersions,
                 totalVersions: response.data.switchedToVersion.totalVersions,
@@ -1039,8 +1125,8 @@ const ChatPage: React.FC = () => {
                           showHeader={true}
                           timestamp={formatTimestamp(index)}
                           messageIndex={index}
-                          onEditMessage={(content) =>
-                            handleEditMessage(index, content)
+                          onEditMessage={(content, autoComplete) =>
+                            handleEditMessage(index, content, autoComplete)
                           }
                           onRegenerateResponse={
                             message.role === "assistant" 
@@ -1051,9 +1137,10 @@ const ChatPage: React.FC = () => {
                             handleSwitchVersion(index, versionNumber)
                           }
                           onLoadVersions={loadMessageVersions}
-                          canEdit={message.role === 'user' && message.editInfo?.canEdit}
+                          canEdit={message.editInfo?.canEdit}
                           canGenerate={false}
                           availableModels={availableModelsForSelect}
+                          linkedUserChatId={message.linkedUserChatId}
                         />
                       ))}
 

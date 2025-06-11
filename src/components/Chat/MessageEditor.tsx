@@ -8,23 +8,32 @@ import {
   IconButton,
   Tooltip,
   Alert,
+  FormControlLabel,
+  Switch,
+  Chip,
 } from '@mui/material';
 import {
   Save,
   X,
   Edit,
   AlertTriangle,
+  Zap,
+  User,
+  Bot,
 } from 'lucide-react';
 
 interface MessageEditorProps {
   initialContent: string;
   isEditing: boolean;
   onStartEdit: () => void;
-  onSaveEdit: (content: string) => void;
+  onSaveEdit: (content: string, autoComplete?: boolean) => void;
   onCancelEdit: () => void;
   canEdit: boolean;
   disabled?: boolean;
   role: 'user' | 'assistant';
+  hasMultipleVersions?: boolean;
+  currentVersion?: number;
+  totalVersions?: number;
 }
 
 const MessageEditor: React.FC<MessageEditorProps> = ({
@@ -36,9 +45,13 @@ const MessageEditor: React.FC<MessageEditorProps> = ({
   canEdit,
   disabled = false,
   role,
+  hasMultipleVersions = false,
+  currentVersion = 1,
+  totalVersions = 1,
 }) => {
   const [editedContent, setEditedContent] = useState(initialContent);
   const [hasChanges, setHasChanges] = useState(false);
+  const [autoComplete, setAutoComplete] = useState(role === 'user');
 
   useEffect(() => {
     setEditedContent(initialContent);
@@ -51,7 +64,7 @@ const MessageEditor: React.FC<MessageEditorProps> = ({
 
   const handleSave = () => {
     if (editedContent.trim() && hasChanges) {
-      onSaveEdit(editedContent.trim());
+      onSaveEdit(editedContent.trim(), autoComplete);
     }
   };
 
@@ -73,7 +86,7 @@ const MessageEditor: React.FC<MessageEditorProps> = ({
 
   if (!isEditing) {
     return canEdit && !disabled ? (
-      <Tooltip title="Edit message">
+      <Tooltip title={`Edit ${role} message`}>
         <IconButton
           size="small"
           onClick={onStartEdit}
@@ -106,14 +119,27 @@ const MessageEditor: React.FC<MessageEditorProps> = ({
         mt: 2,
         borderRadius: 2,
         border: '2px solid',
-        borderColor: 'primary.main',
+        borderColor: role === 'user' ? 'secondary.main' : 'primary.main',
         bgcolor: 'background.paper',
       }}
     >
       <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-          Edit Message
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          {role === 'user' ? <User size={16} /> : <Bot size={16} />}
+          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+            Edit {role === 'user' ? 'User Message' : 'Assistant Response'}
+          </Typography>
+          
+          {hasMultipleVersions && (
+            <Chip
+              label={`v${currentVersion}/${totalVersions}`}
+              size="small"
+              color={role === 'user' ? 'secondary' : 'primary'}
+              sx={{ fontSize: '0.7rem', height: 20 }}
+            />
+          )}
+        </Box>
+        
         {role === 'user' && (
           <Alert
             severity="warning"
@@ -123,7 +149,20 @@ const MessageEditor: React.FC<MessageEditorProps> = ({
               '& .MuiAlert-message': { fontSize: '0.8rem' },
             }}
           >
-            Editing this message will create a new conversation branch and deactivate subsequent messages.
+            Editing this message will create a new version and may affect subsequent responses.
+          </Alert>
+        )}
+        
+        {role === 'assistant' && (
+          <Alert
+            severity="info"
+            icon={<Bot size={16} />}
+            sx={{
+              py: 0.5,
+              '& .MuiAlert-message': { fontSize: '0.8rem' },
+            }}
+          >
+            Editing assistant responses will create a new version of this response.
           </Alert>
         )}
       </Box>
@@ -136,7 +175,11 @@ const MessageEditor: React.FC<MessageEditorProps> = ({
         value={editedContent}
         onChange={(e) => setEditedContent(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={role === 'user' ? 'Edit your message...' : 'Edit assistant response...'}
+        placeholder={
+          role === 'user' 
+            ? 'Edit your message...' 
+            : 'Edit assistant response...'
+        }
         variant="outlined"
         sx={{
           mb: 2,
@@ -146,14 +189,37 @@ const MessageEditor: React.FC<MessageEditorProps> = ({
               borderColor: 'divider',
             },
             '&:hover fieldset': {
-              borderColor: 'primary.main',
+              borderColor: role === 'user' ? 'secondary.main' : 'primary.main',
             },
             '&.Mui-focused fieldset': {
-              borderColor: 'primary.main',
+              borderColor: role === 'user' ? 'secondary.main' : 'primary.main',
             },
           },
         }}
       />
+
+      {role === 'user' && (
+        <Box sx={{ mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={autoComplete}
+                onChange={(e) => setAutoComplete(e.target.checked)}
+                color="primary"
+                size="small"
+              />
+            }
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Zap size={14} />
+                <Typography variant="body2">
+                  Auto-generate response after editing
+                </Typography>
+              </Box>
+            }
+          />
+        </Box>
+      )}
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="caption" color="text.secondary">
@@ -175,10 +241,11 @@ const MessageEditor: React.FC<MessageEditorProps> = ({
             variant="contained"
             onClick={handleSave}
             disabled={!editedContent.trim() || !hasChanges}
-            startIcon={<Save size={16} />}
+            startIcon={autoComplete && role === 'user' ? <Zap size={16} /> : <Save size={16} />}
             sx={{ minWidth: 80 }}
+            color={role === 'user' ? 'secondary' : 'primary'}
           >
-            Save
+            {autoComplete && role === 'user' ? 'Save & Generate' : 'Save'}
           </Button>
         </Box>
       </Box>

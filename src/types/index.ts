@@ -109,12 +109,21 @@ export interface ChatMessage {
   content: string;
   messageIndex?: number;
   isActive?: boolean;
-  versionNumber?: number;
+  
+  // Enhanced versioning fields
+  versionNumber?: number; // Legacy field for backward compatibility
+  userVersionNumber?: number; // Specific to user messages
+  assistantVersionNumber?: number; // Specific to assistant messages
   isCurrentVersion?: boolean;
   hasMultipleVersions?: boolean;
   totalVersions?: number;
+  linkedUserChatId?: string; // For assistant messages - links to user message
+  originalChatId?: string; // Original chat ID for version tracking
+  
   availableVersions?: Array<{
     versionNumber: number;
+    userVersionNumber?: number;
+    assistantVersionNumber?: number;
     isCurrentVersion: boolean;
     createdAt: string;
     contentPreview: string;
@@ -226,11 +235,14 @@ export interface StreamResponse {
       chatId: string;
       role: "user";
       content: string;
+      userVersionNumber: number;
     };
     assistantChat: {
       chatId: string;
       role: "assistant";
       content: string;
+      assistantVersionNumber: number;
+      linkedUserChatId: string;
     };
   };
   optimizationInfo: {
@@ -258,6 +270,8 @@ export interface ChatUpdateRequest {
 
 export interface EditMessageRequest {
   content: string;
+  autoComplete?: boolean;
+  model?: string;
 }
 
 export interface EditMessageResponse {
@@ -267,12 +281,15 @@ export interface EditMessageResponse {
     editedMessage: {
       chatId: string;
       content: string;
-      versionNumber: number;
+      userVersionNumber?: number;
+      assistantVersionNumber?: number;
       isCurrentVersion: boolean;
       hasMultipleVersions: boolean;
       totalVersions: number;
       availableVersions: Array<{
         versionNumber: number;
+        userVersionNumber?: number;
+        assistantVersionNumber?: number;
         isCurrentVersion: boolean;
         createdAt: string;
         content: string;
@@ -300,9 +317,10 @@ export interface GenerateResponse {
     assistantMessage: {
       chatId: string;
       content: string;
-      versionNumber: number;
+      assistantVersionNumber: number;
       hasMultipleVersions: boolean;
       totalVersions: number;
+      linkedUserChatId: string;
       isNewVersion: boolean;
     };
   };
@@ -310,6 +328,7 @@ export interface GenerateResponse {
 
 export interface SwitchVersionRequest {
   versionNumber: number;
+  versionType: 'user' | 'assistant';
 }
 
 export interface SwitchVersionResponse {
@@ -320,11 +339,15 @@ export interface SwitchVersionResponse {
       chatId: string;
       content: string;
       versionNumber: number;
+      userVersionNumber?: number;
+      assistantVersionNumber?: number;
       isCurrentVersion: boolean;
       hasMultipleVersions: boolean;
       totalVersions: number;
       availableVersions: Array<{
         versionNumber: number;
+        userVersionNumber?: number;
+        assistantVersionNumber?: number;
         isCurrentVersion: boolean;
         createdAt: string;
         content: string;
@@ -345,15 +368,21 @@ export interface ChatVersionsResponse {
       chatId: string;
       versionId: string;
       versionNumber: number;
+      userVersionNumber?: number;
+      assistantVersionNumber?: number;
       isCurrentVersion: boolean;
       content: string;
       contentPreview: string;
       wordCount: number;
       characterCount: number;
+      linkedUserChatId?: string;
+      originalChatId?: string;
       createdAt: string;
       updatedAt: string;
       versionHistory: any[];
     }>;
+    versionType: 'user' | 'assistant';
+    linkedUserChatId?: string;
   };
 }
 

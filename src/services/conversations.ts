@@ -95,6 +95,7 @@ export const getChatById = async (chatId: string) => {
   }
 };
 
+// Enhanced edit message with versioning support
 export const editMessage = async (
   chatId: string,
   data: EditMessageRequest
@@ -107,7 +108,7 @@ export const editMessage = async (
   }
 };
 
-// New function for edit + auto completion
+// Edit user message with auto-completion streaming
 export const editMessageAndComplete = async (
   chatId: string,
   data: {
@@ -140,14 +141,15 @@ export const editMessageAndComplete = async (
   return response.body!;
 };
 
+// Generate new assistant response (creates new version)
 export const generateResponse = async (
-  chatId: string,
+  userChatId: string,
   model: string
 ): Promise<ReadableStream<Uint8Array>> => {
   const token = localStorage.getItem("token");
 
   const response = await fetch(
-    `${api.defaults.baseURL}/chat/${chatId}/generate`,
+    `${api.defaults.baseURL}/chat/${userChatId}/generate`,
     {
       method: "POST",
       headers: {
@@ -168,6 +170,7 @@ export const generateResponse = async (
   return response.body!;
 };
 
+// Switch to a specific version (user or assistant)
 export const switchToVersion = async (
   chatId: string,
   data: SwitchVersionRequest
@@ -182,9 +185,11 @@ export const switchToVersion = async (
   }
 };
 
+// Get all versions for a specific chat
 export const getChatVersions = async (
   chatId: string,
   params: {
+    versionType?: 'user' | 'assistant';
     limit?: number;
     page?: number;
   } = {}
@@ -192,6 +197,7 @@ export const getChatVersions = async (
   try {
     const response = await api.get(`/chat/${chatId}/versions`, {
       params: {
+        versionType: params.versionType,
         limit: params.limit || 10,
         page: params.page || 1,
       },
@@ -200,6 +206,29 @@ export const getChatVersions = async (
   } catch (error: any) {
     throw new Error(
       error.response?.data?.message || "Failed to fetch chat versions"
+    );
+  }
+};
+
+// Get assistant versions for a specific user message
+export const getAssistantVersionsForUserMessage = async (
+  userChatId: string,
+  params: {
+    limit?: number;
+    page?: number;
+  } = {}
+): Promise<ChatVersionsResponse> => {
+  try {
+    const response = await api.get(`/chat/${userChatId}/assistant-versions`, {
+      params: {
+        limit: params.limit || 10,
+        page: params.page || 1,
+      },
+    });
+    return response.data;
+  } catch (error: any) {
+    throw new Error(
+      error.response?.data?.message || "Failed to fetch assistant versions"
     );
   }
 };

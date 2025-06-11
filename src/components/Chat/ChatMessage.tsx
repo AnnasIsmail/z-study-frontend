@@ -7,6 +7,7 @@ import {
   Tooltip,
   Chip,
   Fade,
+  Alert,
 } from '@mui/material';
 import { 
   Bot, 
@@ -16,8 +17,10 @@ import {
   RotateCcw,
   GitBranch,
   History,
+  AlertCircle,
 } from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../types';
+import { ChatVersion } from '../../types/versioning';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -30,10 +33,10 @@ interface ChatMessageProps {
   isStreaming?: boolean;
   loading?: boolean;
   darkMode?: boolean;
-  onEditMessage?: (content: string) => void;
+  onEditMessage?: (content: string, autoComplete?: boolean) => void;
   onRegenerateResponse?: () => void;
   onSwitchVersion?: (versionNumber: number) => void;
-  onLoadVersions?: (chatId: string) => Promise<any[]>;
+  onLoadVersions?: (chatId: string) => Promise<ChatVersion[]>;
   model?: string;
   showHeader?: boolean;
   timestamp?: string;
@@ -41,6 +44,7 @@ interface ChatMessageProps {
   canEdit?: boolean;
   canGenerate?: boolean;
   availableModels?: Array<{ id: string; name: string }>;
+  linkedUserChatId?: string; // For assistant messages
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -59,6 +63,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   canEdit = false,
   canGenerate = false,
   availableModels,
+  linkedUserChatId,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -77,9 +82,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     setIsEditing(true);
   };
 
-  const handleSaveEdit = (content: string) => {
+  const handleSaveEdit = (content: string, autoComplete?: boolean) => {
     if (onEditMessage && content !== message.content && content.trim()) {
-      onEditMessage(content);
+      onEditMessage(content, autoComplete);
     }
     setIsEditing(false);
   };
@@ -104,6 +109,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   };
 
   const isUser = message.role === 'user';
+  const hasVersions = message.hasMultipleVersions || (message.totalVersions && message.totalVersions > 1);
+
+  // Determine version number based on role
+  const currentVersionNumber = isUser 
+    ? message.userVersionNumber || message.versionNumber || 1
+    : message.assistantVersionNumber || message.versionNumber || 1;
 
   return (
     <Box
@@ -141,10 +152,29 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             }}
           />
         )}
-        {message.hasMultipleVersions && (
+        
+        {hasVersions && (
           <Chip
             icon={<GitBranch size={12} />}
-            label={`v${message.versionNumber}/${message.totalVersions}`}
+            label={`${isUser ? 'User' : 'AI'} v${currentVersionNumber}/${message.totalVersions}`}
+            size="small"
+            color={isUser ? "secondary" : "primary"}
+            variant="outlined"
+            sx={{
+              fontSize: "0.6rem",
+              height: 16,
+              "& .MuiChip-label": {
+                px: 1,
+              },
+            }}
+          />
+        )}
+
+        {/* Show linked user message indicator for assistant responses */}
+        {!isUser && linkedUserChatId && (
+          <Chip
+            icon={<User size={10} />}
+            label="Linked"
             size="small"
             color="info"
             variant="outlined"
@@ -152,7 +182,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               fontSize: "0.6rem",
               height: 16,
               "& .MuiChip-label": {
-                px: 1,
+                px: 0.5,
               },
             }}
           />
@@ -199,7 +229,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             sx={{
               p: 2,
               borderRadius: 3,
-              bgcolor: isUser ? "primary.main" : "background.default",
+              bgcolor: isUser ? "secondary.main" : "background.default",
               color: isUser ? "white" : "text.primary",
               position: "relative",
               width: "fit-content",
@@ -212,7 +242,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           >
             {isUser ? (
               <Typography
-                variant="body1\"
+                variant="body1"
                 sx={{
                   whiteSpace: "pre-wrap",
                   wordBreak: "break-word",
@@ -244,7 +274,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                     },
                   }}
                 >
-                  {message.content}
+                  {String(message.content)}
                 </ReactMarkdown>
               </Box>
             )}
@@ -259,21 +289,21 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           </Paper>
 
           {/* Message Editor */}
-          {/* {!isStreaming && ( */}
           <MessageEditor
             initialContent={message.content}
             isEditing={isEditing}
             onStartEdit={handleStartEdit}
             onSaveEdit={handleSaveEdit}
             onCancelEdit={handleCancelEdit}
-            canEdit={true}
+            canEdit={canEdit}
             disabled={loading}
             role={message.role}
+            hasMultipleVersions={hasVersions}
+            currentVersion={currentVersionNumber}
+            totalVersions={message.totalVersions}
           />
-          {/* )} */}
 
           {/* Action buttons at the bottom of the message */}
-          {/* {!isEditing && !isStreaming && ( */}
           <Fade in={true}>
             <Box
               sx={{
@@ -312,47 +342,46 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               </Tooltip>
 
               {/* Regenerate button for assistant messages */}
-              {/* {!isUser && onRegenerateResponse && ( */}
-              <Tooltip title="Regenerate response">
-                <IconButton
-                  size="small"
-                  onClick={onRegenerateResponse}
-                  disabled={loading}
-                  sx={{
-                    width: 28,
-                    height: 28,
-                    bgcolor: "transparent",
-                    border: "1px solid",
-                    borderColor: "divider",
-                    color: "text.secondary",
-                    "&:hover": {
-                      bgcolor: "action.hover",
-                      borderColor: "primary.main",
-                      color: "primary.main",
-                    },
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  <RotateCcw size={14} />
-                </IconButton>
-              </Tooltip>
-              {/* )} */}
+              {!isUser && onRegenerateResponse && (
+                <Tooltip title="Regenerate response">
+                  <IconButton
+                    size="small"
+                    onClick={onRegenerateResponse}
+                    disabled={loading}
+                    sx={{
+                      width: 28,
+                      height: 28,
+                      bgcolor: "transparent",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      color: "text.secondary",
+                      "&:hover": {
+                        bgcolor: "action.hover",
+                        borderColor: "primary.main",
+                        color: "primary.main",
+                      },
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <RotateCcw size={14} />
+                  </IconButton>
+                </Tooltip>
+              )}
 
               {/* Version Navigator */}
-              {/* {message.hasMultipleVersions &&
-                  message.chatId &&
-                  onSwitchVersion &&
-                  onLoadVersions && ( */}
-              <VersionNavigator
-                chatId={message.chatId}
-                currentVersion={message.versionNumber || 1}
-                totalVersions={message.totalVersions || 1}
-                hasMultipleVersions={message.hasMultipleVersions}
-                onVersionChange={handleVersionChange}
-                onLoadVersions={onLoadVersions}
-                disabled={loading}
-              />
-              {/* )} */}
+              {hasVersions && message.chatId && onSwitchVersion && onLoadVersions && (
+                <VersionNavigator
+                  chatId={message.chatId}
+                  role={message.role}
+                  currentVersion={currentVersionNumber}
+                  totalVersions={message.totalVersions || 1}
+                  hasMultipleVersions={hasVersions}
+                  onVersionChange={handleVersionChange}
+                  onLoadVersions={onLoadVersions}
+                  disabled={loading}
+                  linkedUserChatId={linkedUserChatId}
+                />
+              )}
 
               {/* Timestamp */}
               <Typography
@@ -368,9 +397,25 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               </Typography>
             </Box>
           </Fade>
-          {/* )} */}
         </Box>
       </Box>
+
+      {/* Version-related alerts */}
+      {message.editInfo?.isEdited && (
+        <Alert
+          severity="info"
+          icon={<History size={16} />}
+          sx={{
+            mt: 1,
+            ml: isUser ? 6 : 0,
+            mr: isUser ? 0 : 6,
+            maxWidth: "85%",
+            alignSelf: isUser ? "flex-end" : "flex-start",
+          }}
+        >
+          This message has been edited and may have created a new conversation branch.
+        </Alert>
+      )}
     </Box>
   );
 };
