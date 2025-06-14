@@ -18,6 +18,8 @@ import {
   GitBranch,
   History,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ChatMessage as ChatMessageType } from '../../types';
 import { ChatVersion } from '../../types/versioning';
@@ -26,7 +28,6 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { format } from 'date-fns';
 import MessageEditor from './MessageEditor';
-import VersionNavigator from './VersionNavigator';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -35,7 +36,7 @@ interface ChatMessageProps {
   darkMode?: boolean;
   onEditMessage?: (content: string, autoComplete?: boolean) => void;
   onRegenerateResponse?: () => void;
-  onSwitchVersion?: (versionNumber: number) => void;
+  onSwitchVersion?: (direction: string) => void;
   onLoadVersions?: (chatId: string) => Promise<ChatVersion[]>;
   model?: string;
   showHeader?: boolean;
@@ -67,6 +68,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [switchingVersion, setSwitchingVersion] = useState(false);
 
   const copyToClipboard = async () => {
     try {
@@ -93,9 +95,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     setIsEditing(false);
   };
 
-  const handleVersionChange = (versionNumber: number) => {
-    if (onSwitchVersion) {
-      onSwitchVersion(versionNumber);
+  const handleVersionSwitch = async (direction: string) => {
+    if (!onSwitchVersion || !message.chatId || switchingVersion) return;
+    
+    setSwitchingVersion(true);
+    try {
+      await onSwitchVersion(direction);
+    } finally {
+      setSwitchingVersion(false);
     }
   };
 
@@ -115,6 +122,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const currentVersionNumber = isUser 
     ? message.userVersionNumber || message.versionNumber || 1
     : message.assistantVersionNumber || message.versionNumber || 1;
+
+  const totalVersions = message.totalVersions || 1;
 
   return (
     <Box
@@ -156,7 +165,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         {hasVersions && (
           <Chip
             icon={<GitBranch size={12} />}
-            label={`${isUser ? 'User' : 'AI'} v${currentVersionNumber}/${message.totalVersions}`}
+            label={`${isUser ? 'User' : 'AI'} v${currentVersionNumber}/${totalVersions}`}
             size="small"
             color={isUser ? "secondary" : "primary"}
             variant="outlined"
@@ -300,7 +309,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             role={message.role}
             hasMultipleVersions={hasVersions}
             currentVersion={currentVersionNumber}
-            totalVersions={message.totalVersions}
+            totalVersions={totalVersions}
           />
 
           {/* Action buttons at the bottom of the message */}
@@ -341,6 +350,74 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 </IconButton>
               </Tooltip>
 
+              {/* Version Navigation for User Messages */}
+              {isUser && hasVersions && message.chatId && onSwitchVersion && (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    bgcolor: 'background.paper',
+                    overflow: 'hidden',
+                    opacity: switchingVersion ? 0.5 : 1,
+                    pointerEvents: switchingVersion ? 'none' : 'auto',
+                  }}
+                >
+                  <Tooltip title="Previous version">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleVersionSwitch('prev')}
+                      disabled={loading || switchingVersion}
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 0,
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        },
+                      }}
+                    >
+                      <ChevronLeft size={14} />
+                    </IconButton>
+                  </Tooltip>
+
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      px: 1,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: 'text.secondary',
+                      minWidth: '40px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    {currentVersionNumber}/{totalVersions}
+                  </Typography>
+
+                  <Tooltip title="Next version">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleVersionSwitch('next')}
+                      disabled={loading || switchingVersion}
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 0,
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        },
+                      }}
+                    >
+                      <ChevronRight size={14} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              )}
+
               {/* Regenerate button for assistant messages */}
               {!isUser && onRegenerateResponse && (
                 <Tooltip title="Regenerate response">
@@ -368,19 +445,72 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 </Tooltip>
               )}
 
-              {/* Version Navigator */}
-              {hasVersions && message.chatId && onSwitchVersion && onLoadVersions && (
-                <VersionNavigator
-                  chatId={message.chatId}
-                  role={message.role}
-                  currentVersion={currentVersionNumber}
-                  totalVersions={message.totalVersions || 1}
-                  hasMultipleVersions={hasVersions}
-                  onVersionChange={handleVersionChange}
-                  onLoadVersions={onLoadVersions}
-                  disabled={loading}
-                  linkedUserChatId={linkedUserChatId}
-                />
+              {/* Version Navigation for Assistant Messages */}
+              {!isUser && hasVersions && message.chatId && onSwitchVersion && (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    bgcolor: 'background.paper',
+                    overflow: 'hidden',
+                    opacity: switchingVersion ? 0.5 : 1,
+                    pointerEvents: switchingVersion ? 'none' : 'auto',
+                  }}
+                >
+                  <Tooltip title="Previous version">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleVersionSwitch('prev')}
+                      disabled={loading || switchingVersion}
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 0,
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        },
+                      }}
+                    >
+                      <ChevronLeft size={14} />
+                    </IconButton>
+                  </Tooltip>
+
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      px: 1,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: 'text.secondary',
+                      minWidth: '40px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    {currentVersionNumber}/{totalVersions}
+                  </Typography>
+
+                  <Tooltip title="Next version">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleVersionSwitch('next')}
+                      disabled={loading || switchingVersion}
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 0,
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        },
+                      }}
+                    >
+                      <ChevronRight size={14} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               )}
 
               {/* Timestamp */}

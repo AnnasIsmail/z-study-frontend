@@ -646,75 +646,53 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  // Load versions for a specific message
-  const loadMessageVersions = async (chatId: string): Promise<ChatVersion[]> => {
-    try {
-      const message = messages.find(m => m.chatId === chatId);
-      if (!message) return [];
-
-      const response = await getChatVersions(chatId, {
-        versionType: message.role,
-      });
-      
-      if (response.success) {
-        return response.data.versions.map(version => ({
-          chatId: version.chatId,
-          versionId: version.versionId,
-          versionNumber: version.versionNumber,
-          userVersionNumber: version.userVersionNumber,
-          assistantVersionNumber: version.assistantVersionNumber,
-          isCurrentVersion: version.isCurrentVersion,
-          content: version.content,
-          contentPreview: version.contentPreview,
-          createdAt: version.createdAt,
-          wordCount: version.wordCount,
-          characterCount: version.characterCount,
-          linkedUserChatId: version.linkedUserChatId,
-          originalChatId: version.originalChatId,
-          updatedAt: version.updatedAt,
-        }));
-      }
-      return [];
-    } catch (error: any) {
-      console.error("Failed to load versions:", error);
-      return [];
-    }
-  };
-
   // Switch to a different version
-  const handleSwitchVersion = async (messageIndex: number, versionNumber: number) => {
+  const handleSwitchVersion = async (messageIndex: number, direction: string) => {
     const message = messages[messageIndex];
     if (!message?.chatId) return;
 
     try {
       setLoading(true);
       const response = await switchToVersion(message.chatId, { 
-        direction: versionNumber,
+        direction: direction,
         versionType: message.role,
       });
 
-      if (response.success) {
+      if (response.success && response.data.result && response.data.result.length > 0) {
+        const switchedVersion = response.data.result[0];
+        const versionInfo = response.data.versionInfo;
+        
         // Update the message content in UI
         setMessages(prev => prev.map((msg, index) => 
           index === messageIndex 
             ? { 
                 ...msg, 
-                content: response.data.switchedToVersion.content,
-                userVersionNumber: response.data.switchedToVersion.userVersionNumber,
-                assistantVersionNumber: response.data.switchedToVersion.assistantVersionNumber,
-                versionNumber: response.data.switchedToVersion.versionNumber,
-                isCurrentVersion: response.data.switchedToVersion.isCurrentVersion,
-                hasMultipleVersions: response.data.switchedToVersion.hasMultipleVersions,
-                totalVersions: response.data.switchedToVersion.totalVersions,
+                content: message.role === 'user' 
+                  ? switchedVersion.content.prompt 
+                  : switchedVersion.content.response,
+                userVersionNumber: switchedVersion.userVersion,
+                assistantVersionNumber: switchedVersion.assistantVersion,
+                versionNumber: message.role === 'user' 
+                  ? switchedVersion.userVersion 
+                  : switchedVersion.assistantVersion,
+                isCurrentVersion: true,
+                hasMultipleVersions: versionInfo.totalVersions > 1,
+                totalVersions: versionInfo.totalVersions,
               }
             : msg
         ));
 
-        setSnackbarMessage(`Switched to version ${versionNumber}`);
+        const currentVersion = message.role === 'user' 
+          ? switchedVersion.userVersion 
+          : switchedVersion.assistantVersion;
+        
+        setSnackbarMessage(`Switched to version ${currentVersion}`);
         setSnackbarOpen(true);
       }
     } catch (error: any) {
       setError(error.message || "Failed to switch version");
+      setSnackbarMessage("Failed to switch version");
+      setSnackbarOpen(true);
     } finally {
       setLoading(false);
     }
@@ -1049,10 +1027,9 @@ const ChatPage: React.FC = () => {
                               ? () => handleRegenerateResponse(index)
                               : undefined
                           }
-                          onSwitchVersion={(versionNumber) =>
-                            handleSwitchVersion(index, versionNumber)
+                          onSwitchVersion={(direction) =>
+                            handleSwitchVersion(index, direction)
                           }
-                          onLoadVersions={loadMessageVersions}
                           canEdit={message.editInfo?.canEdit}
                           canGenerate={false}
                           availableModels={availableModelsForSelect}
