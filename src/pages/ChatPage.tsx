@@ -158,61 +158,48 @@ const ChatPage: React.FC = () => {
 
         if (results.length > 0) {
           const processedMessages: ChatMessageType[] = [];
-          const messageMap = new Map();
 
-          // Group messages by linkedUserChatId
+          // Process each chat item which now contains both user and assistant content
           results.forEach(chat => {
-            if ('prompt' in chat.content) {
-              messageMap.set(chat.chatId, {
-                user: chat,
-                assistant: results.find(c => 
-                  c.linkedUserChatId === chat.chatId && 'response' in c.content
-                )
-              });
-            }
-          });
-
-          // Process messages in user-assistant pairs
-          messageMap.forEach(({ user, assistant }) => {
             // Add user message
             const userMessage: ChatMessageType = {
-              chatId: user.chatId,
+              chatId: chat.chatId,
               role: 'user',
-              content: user.content.prompt,
+              content: chat.content.prompt,
               messageIndex: processedMessages.length,
               isActive: true,
-              isCurrentVersion: true,
-              userVersionNumber: user.userVersionNumber,
-              versionNumber: user.versionNumber,
-              totalVersions: 1,
-              hasMultipleVersions: false,
+              isCurrentVersion: chat.isLatestVersion,
+              userVersionNumber: chat.userVersion,
+              versionNumber: chat.userVersion,
+              totalVersions: chat.totalVersions || 1,
+              hasMultipleVersions: chat.hasMultipleVersions || false,
               editInfo: { 
-                canEdit: true,
-                isEdited: false 
+                canEdit: chat.canEdit || true,
+                isEdited: chat.versionType === 'user_edit' 
               },
-              createdAt: user.createdAt,
+              createdAt: chat.createdAt,
             };
             processedMessages.push(userMessage);
 
-            // Add assistant message if exists
-            if (assistant) {
+            // Add assistant message if response exists
+            if (chat.content.response) {
               const assistantMessage: ChatMessageType = {
-                chatId: assistant.chatId,
+                chatId: chat.chatId + '_assistant', // Create unique ID for assistant message
                 role: 'assistant',
-                content: assistant.content.response,
+                content: chat.content.response,
                 messageIndex: processedMessages.length,
                 isActive: true,
-                isCurrentVersion: true,
-                userVersionNumber: assistant.userVersionNumber,
-                versionNumber: assistant.versionNumber,
-                totalVersions: 1,
-                hasMultipleVersions: false,
-                linkedUserChatId: assistant.linkedUserChatId,
+                isCurrentVersion: chat.isLatestVersion,
+                assistantVersionNumber: chat.assistantVersion,
+                versionNumber: chat.assistantVersion,
+                totalVersions: chat.totalVersions || 1,
+                hasMultipleVersions: chat.hasMultipleVersions || false,
+                linkedUserChatId: chat.chatId, // Link to the user message
                 editInfo: { 
                   canEdit: false,
                   isEdited: false 
                 },
-                createdAt: assistant.createdAt,
+                createdAt: chat.createdAt,
               };
               processedMessages.push(assistantMessage);
             }
@@ -706,7 +693,7 @@ const ChatPage: React.FC = () => {
         versionType: message.role,
       });
 
-      if (response.success) { // Added missing parentheses here
+      if (response.success) {
         // Update the message content in UI
         setMessages(prev => prev.map((msg, index) => 
           index === messageIndex 

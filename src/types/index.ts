@@ -196,20 +196,50 @@ export interface ChatHistoryResponse {
   totalResults: number;
 }
 
+// Updated interface to match the new API response format
 export interface ConversationChatsResponse {
   success: boolean;
   data: {
     results: Array<{
       chatId: string;
       conversationId: string;
-      content: {
-        prompt?: string;
-        response?: string;
-      };
-      userVersion?: number;
-      assistantVersion?: number;
+      userId: string;
       model: string;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      costUSD: number;
+      costIDR: number;
+      content: {
+        prompt: string;
+        response: string;
+      };
+      filesUrl: string[];
+      userVersion: number;
+      assistantVersion: number;
+      originalChatId: string;
+      isLatestVersion: boolean;
+      parentChatId: string | null;
+      versionType: string;
+      previousChatId: string | null;
+      nextChatId: string | null;
+      sequenceIndex: number;
+      isSequenceHead: boolean;
       createdAt: string;
+      updatedAt: string;
+      canEdit: boolean;
+      canRegenerate: boolean;
+      hasMultipleVersions: boolean;
+      totalVersions: number;
+      availableVersions: Array<{
+        versionNumber: number;
+        userVersionNumber?: number;
+        assistantVersionNumber?: number;
+        isCurrentVersion: boolean;
+        createdAt: string;
+        contentPreview: string;
+        content?: string;
+      }>;
     }>;
     lastEvaluatedKey?: string;
     limit: number;
