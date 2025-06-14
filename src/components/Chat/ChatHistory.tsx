@@ -54,7 +54,6 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
       setLoading(true);
       const newPage = refresh ? 1 : page;
       const response = await getConversations(newPage);
-      console.log(response);
 
       if (refresh) {
         setConversations(response.data.results);

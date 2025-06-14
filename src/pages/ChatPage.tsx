@@ -153,81 +153,80 @@ const ChatPage: React.FC = () => {
       });
 
       if (response.success && response.data) {
-        if (response.data.results && response.data.results.length > 0) {
-          // Process the chat messages and separate user/assistant pairs
+        const results = response.data.results || [];
+        console.log("Conversation response:", results);
+
+        if (results.length > 0) {
           const processedMessages: ChatMessageType[] = [];
-          
-          // Group messages by pairs (user + assistant)
-          const chatPairs = new Map<string, { user?: any, assistant?: any }>();
-          
-          response.data.results.forEach((chat) => {
-            const isUserMessage = chat.content && typeof chat.content === 'object' && 'prompt' in chat.content;
-            const isAssistantMessage = chat.content && typeof chat.content === 'object' && 'response' in chat.content;
-            
-            if (isUserMessage) {
-              if (!chatPairs.has(chat.chatId)) {
-                chatPairs.set(chat.chatId, {});
-              }
-              chatPairs.get(chat.chatId)!.user = chat;
-            } else if (isAssistantMessage) {
-              if (!chatPairs.has(chat.chatId)) {
-                chatPairs.set(chat.chatId, {});
-              }
-              chatPairs.get(chat.chatId)!.assistant = chat;
-            }
-          });
+          const messageMap = new Map();
 
-          // Convert pairs to messages
-          chatPairs.forEach((pair, chatId) => {
-            if (pair.user) {
-              processedMessages.push({
-                chatId: pair.user.chatId,
-                role: "user",
-                content: pair.user.content.prompt,
-                messageIndex: processedMessages.length,
-                isActive: true,
-                isCurrentVersion: true,
-                userVersionNumber: pair.user.userVersion,
-                versionNumber: pair.user.userVersion,
-                totalVersions: 1,
-                hasMultipleVersions: false,
-                editInfo: { canEdit: true, isEdited: false },
-                createdAt: pair.user.createdAt,
-              });
-            }
-            
-            if (pair.assistant) {
-              processedMessages.push({
-                chatId: pair.assistant.chatId,
-                role: "assistant",
-                content: pair.assistant.content.response,
-                messageIndex: processedMessages.length,
-                isActive: true,
-                isCurrentVersion: true,
-                assistantVersionNumber: pair.assistant.assistantVersion,
-                versionNumber: pair.assistant.assistantVersion,
-                totalVersions: 1,
-                hasMultipleVersions: false,
-                linkedUserChatId: pair.user?.chatId,
-                editInfo: { canEdit: false, isEdited: false },
-                createdAt: pair.assistant.createdAt,
+          // Group messages by linkedUserChatId
+          results.forEach(chat => {
+            if ('prompt' in chat.content) {
+              messageMap.set(chat.chatId, {
+                user: chat,
+                assistant: results.find(c => 
+                  c.linkedUserChatId === chat.chatId && 'response' in c.content
+                )
               });
             }
           });
 
-          // Sort by creation time
+          // Process messages in user-assistant pairs
+          messageMap.forEach(({ user, assistant }) => {
+            // Add user message
+            const userMessage: ChatMessageType = {
+              chatId: user.chatId,
+              role: 'user',
+              content: user.content.prompt,
+              messageIndex: processedMessages.length,
+              isActive: true,
+              isCurrentVersion: true,
+              userVersionNumber: user.userVersionNumber,
+              versionNumber: user.versionNumber,
+              totalVersions: 1,
+              hasMultipleVersions: false,
+              editInfo: { 
+                canEdit: true,
+                isEdited: false 
+              },
+              createdAt: user.createdAt,
+            };
+            processedMessages.push(userMessage);
+
+            // Add assistant message if exists
+            if (assistant) {
+              const assistantMessage: ChatMessageType = {
+                chatId: assistant.chatId,
+                role: 'assistant',
+                content: assistant.content.response,
+                messageIndex: processedMessages.length,
+                isActive: true,
+                isCurrentVersion: true,
+                userVersionNumber: assistant.userVersionNumber,
+                versionNumber: assistant.versionNumber,
+                totalVersions: 1,
+                hasMultipleVersions: false,
+                linkedUserChatId: assistant.linkedUserChatId,
+                editInfo: { 
+                  canEdit: false,
+                  isEdited: false 
+                },
+                createdAt: assistant.createdAt,
+              };
+              processedMessages.push(assistantMessage);
+            }
+          });
+
+          // Sort messages by creation time
           processedMessages.sort((a, b) => 
             new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
           );
 
           if (loadMore) {
-            // Prepend older messages
             setMessages(prev => [...processedMessages, ...prev]);
           } else {
-            // Initial load
             setMessages(processedMessages);
-            
-            // Set conversation info
             setSelectedConversation({
               conversationId: convId,
               title: `Conversation ${convId.slice(0, 8)}...`,
@@ -237,20 +236,9 @@ const ChatPage: React.FC = () => {
           }
 
           // Update pagination info
-          setHasMoreMessages(response.data.hasMore);
-          setLastEvaluatedKey(response.data.lastEvaluatedKey);
-        } else {
-          // No results found
-          setMessages([]);
-          setSelectedConversation({
-            conversationId: convId,
-            title: `Conversation ${convId.slice(0, 8)}...`,
-            lastMessageAt: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-          });
+          setHasMoreMessages(response.data.hasMore || false);
+          setLastEvaluatedKey(response.data.lastEvaluatedKey || undefined);
         }
-        
-        setOptimizationInfo(null);
       }
     } catch (error: any) {
       setError("Failed to load conversation");
@@ -718,7 +706,7 @@ const ChatPage: React.FC = () => {
         versionType: message.role,
       });
 
-      if (response.success) {
+      if (response.success) { // Added missing parentheses here
         // Update the message content in UI
         setMessages(prev => prev.map((msg, index) => 
           index === messageIndex 

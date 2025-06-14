@@ -77,39 +77,10 @@ export const getConversationChats = async (
       },
     });
     
-    // Transform API response to match our types
     if (response.data.success && response.data.data) {
-      const transformedResults = response.data.data.results.map((chat: any) => ({
-        chatId: chat.chatId,
-        conversationId: chat.conversationId,
-        role: chat.content.prompt ? "user" : "assistant",
-        content: chat.content.prompt || chat.content.response || "",
-        messageIndex: 0, // Will be set by the component
-        isActive: true,
-        
-        // Version information
-        userVersionNumber: chat.userVersion,
-        assistantVersionNumber: chat.assistantVersion,
-        versionNumber: chat.userVersion || chat.assistantVersion, // Legacy support
-        isCurrentVersion: true,
-        hasMultipleVersions: false, // Will be updated if needed
-        totalVersions: 1,
-        
-        model: chat.model,
-        createdAt: chat.createdAt,
-        editInfo: { canEdit: true, isEdited: false },
-      }));
-
       return {
         success: true,
-        data: {
-          results: transformedResults,
-          lastEvaluatedKey: response.data.data.lastEvaluatedKey,
-          limit: response.data.data.limit,
-          totalResults: response.data.data.totalResults,
-          hasMore: response.data.data.hasMore,
-          conversationInfo: response.data.data.conversationInfo,
-        },
+        data: response.data.data,
       };
     }
     
