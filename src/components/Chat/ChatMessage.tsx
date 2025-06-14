@@ -152,11 +152,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             }}
           />
         )}
-        
+
         {hasVersions && (
           <Chip
             icon={<GitBranch size={12} />}
-            label={`${isUser ? 'User' : 'AI'} v${currentVersionNumber}/${message.totalVersions}`}
+            label={`${isUser ? "User" : "AI"} v${currentVersionNumber}/${
+              message.totalVersions
+            }`}
             size="small"
             color={isUser ? "secondary" : "primary"}
             variant="outlined"
@@ -289,19 +291,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           </Paper>
 
           {/* Message Editor */}
-          <MessageEditor
-            initialContent={message.content}
-            isEditing={isEditing}
-            onStartEdit={handleStartEdit}
-            onSaveEdit={handleSaveEdit}
-            onCancelEdit={handleCancelEdit}
-            canEdit={canEdit}
-            disabled={loading}
-            role={message.role}
-            hasMultipleVersions={hasVersions}
-            currentVersion={currentVersionNumber}
-            totalVersions={message.totalVersions}
-          />
 
           {/* Action buttons at the bottom of the message */}
           <Fade in={true}>
@@ -317,6 +306,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 transition: "opacity 0.2s ease",
               }}
             >
+              <MessageEditor
+                initialContent={message.content}
+                isEditing={isEditing}
+                onStartEdit={handleStartEdit}
+                onSaveEdit={handleSaveEdit}
+                onCancelEdit={handleCancelEdit}
+                canEdit={canEdit}
+                disabled={loading}
+                role={message.role}
+                hasMultipleVersions={hasVersions}
+                currentVersion={currentVersionNumber}
+                totalVersions={message.totalVersions}
+              />
               {/* Copy button */}
               <Tooltip title={copied ? "Copied!" : "Copy message"}>
                 <IconButton
@@ -369,19 +371,22 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               )}
 
               {/* Version Navigator */}
-              {hasVersions && message.chatId && onSwitchVersion && onLoadVersions && (
-                <VersionNavigator
-                  chatId={message.chatId}
-                  role={message.role}
-                  currentVersion={currentVersionNumber}
-                  totalVersions={message.totalVersions || 1}
-                  hasMultipleVersions={hasVersions}
-                  onVersionChange={handleVersionChange}
-                  onLoadVersions={onLoadVersions}
-                  disabled={loading}
-                  linkedUserChatId={linkedUserChatId}
-                />
-              )}
+              {hasVersions &&
+                message.chatId &&
+                onSwitchVersion &&
+                onLoadVersions && (
+                  <VersionNavigator
+                    chatId={message.chatId}
+                    role={message.role}
+                    currentVersion={currentVersionNumber}
+                    totalVersions={message.totalVersions || 1}
+                    hasMultipleVersions={hasVersions}
+                    onVersionChange={handleVersionChange}
+                    onLoadVersions={onLoadVersions}
+                    disabled={loading}
+                    linkedUserChatId={linkedUserChatId}
+                  />
+                )}
 
               {/* Timestamp */}
               <Typography
@@ -401,7 +406,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
       </Box>
 
       {/* Version-related alerts */}
-      {message.editInfo?.isEdited && (
+      {/* {message.editInfo?.isEdited && (
         <Alert
           severity="info"
           icon={<History size={16} />}
@@ -413,9 +418,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             alignSelf: isUser ? "flex-end" : "flex-start",
           }}
         >
-          This message has been edited and may have created a new conversation branch.
+          This message has been edited and may have created a new conversation
+          branch.
         </Alert>
-      )}
+      )} */}
     </Box>
   );
 };
