@@ -652,55 +652,117 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  // Switch to a different version using the new API
+  // Updated switch version handler to handle multiple messages
   const handleSwitchVersion = async (messageIndex: number, direction: number) => {
     const message = messages[messageIndex];
-    if (!message?.chatId) return;
+    if (!message?.originalChatId) {
+      console.error("originalChatId is missing for this message.");
+      return;
+    }
 
     try {
       setLoading(true);
       setError("");
 
       const validVersionType = message.role === "user" || message.role === "assistant" ? message.role : undefined;
-      if (!message.originalChatId) {
-        throw new Error("originalChatId is missing for this message.");
-      }
+      
       const response = await switchToVersion(message.originalChatId, { 
         direction: direction,
         versionType: validVersionType,
       });
 
       if (response.success && response.data.result && response.data.result.length > 0) {
-        const switchedVersion = response.data.result[0];
-        const versionInfo = response.data.versionInfo;
+        // The API returns multiple chat items representing the new conversation thread
+        const newConversationThread = response.data.result;
         
-        // Update the message content in UI
-        setMessages(prev => prev.map((msg, index) => 
-          index === messageIndex 
-            ? { 
-                ...msg, 
-                content: message.role === 'user' 
-                  ? switchedVersion.content.prompt 
-                  : switchedVersion.content.response,
-                userVersionNumber: switchedVersion.userVersion,
-                assistantVersionNumber: switchedVersion.assistantVersion,
-                versionNumber: message.role === 'user' 
-                  ? switchedVersion.userVersion 
-                  : switchedVersion.assistantVersion,
-                isCurrentVersion: true,
-                hasMultipleVersions: versionInfo.totalVersions > 1,
-                totalUserVersions: versionInfo.totalUserVersions ?? 1,
-                totalAssistantVersions: versionInfo.totalAssistantVersions ?? 1,
-              }
-            : msg
-        ));
+        // Process the new conversation thread into messages
+        const newMessages: ChatMessageType[] = [];
+        
+        newConversationThread.forEach(chat => {
+          // Add user message
+          const userMessage: ChatMessageType = {
+            chatId: chat.chatId,
+            role: 'user',
+            content: chat.content.prompt,
+            messageIndex: newMessages.length,
+            isActive: true,
+            isCurrentVersion: chat.isLatestVersion,
+            userVersionNumber: chat.userVersion,
+            versionNumber: chat.userVersion,
+            totalUserVersions: response.data.versionInfo.totalUserVersions || 1,
+            totalAssistantVersions: response.data.versionInfo.totalAssistantVersions || 1,
+            hasMultipleVersions: response.data.versionInfo.totalUserVersions > 1,
+            originalChatId: chat.originalChatId,
+            editInfo: { 
+              canEdit: true,
+              isEdited: chat.versionType === 'user_edit' 
+            },
+            createdAt: chat.createdAt,
+          };
+          newMessages.push(userMessage);
+
+          // Add assistant message if response exists
+          if (chat.content.response) {
+            const assistantMessage: ChatMessageType = {
+              chatId: chat.chatId + '_assistant',
+              role: 'assistant',
+              content: chat.content.response,
+              messageIndex: newMessages.length,
+              isActive: true,
+              isCurrentVersion: chat.isLatestVersion,
+              assistantVersionNumber: chat.assistantVersion,
+              versionNumber: chat.assistantVersion,
+              totalUserVersions: response.data.versionInfo.totalUserVersions || 1,
+              totalAssistantVersions: response.data.versionInfo.totalAssistantVersions || 1,
+              originalChatId: chat.originalChatId,
+              hasMultipleVersions: response.data.versionInfo.totalAssistantVersions > 1,
+              linkedUserChatId: chat.chatId,
+              editInfo: { 
+                canEdit: false,
+                isEdited: false 
+              },
+              createdAt: chat.createdAt,
+            };
+            newMessages.push(assistantMessage);
+          }
+        });
+
+        // Sort messages by creation time to maintain proper order
+        newMessages.sort((a, b) => 
+          new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+        );
+
+        // Replace messages from the switched message index onwards with the new thread
+        setMessages(prev => {
+          // Find the index of the message being switched (user message)
+          const switchedMessageIndex = prev.findIndex(msg => 
+            msg.originalChatId === message.originalChatId && msg.role === message.role
+          );
+          
+          if (switchedMessageIndex === -1) {
+            // If we can't find the message, replace all messages
+            return newMessages;
+          }
+
+          // Keep messages before the switched message and replace from that point onwards
+          const messagesBeforeSwitch = prev.slice(0, switchedMessageIndex);
+          
+          // Update message indices for the new messages
+          const updatedNewMessages = newMessages.map((msg, index) => ({
+            ...msg,
+            messageIndex: messagesBeforeSwitch.length + index,
+          }));
+
+          return [...messagesBeforeSwitch, ...updatedNewMessages];
+        });
 
         const currentVersion = message.role === 'user' 
-          ? switchedVersion.userVersion 
-          : switchedVersion.assistantVersion;
+          ? response.data.versionInfo.currentUserVersion
+          : response.data.versionInfo.currentAssistantVersion;
         
-        setSnackbarMessage(`Switched to version ${currentVersion}`);
+        setSnackbarMessage(`Switched to version ${currentVersion} - conversation updated`);
         setSnackbarOpen(true);
+        setRefreshHistoryTrigger((prev) => prev + 1);
       }
     } catch (error: any) {
       setError(error.message || "Failed to switch version");
