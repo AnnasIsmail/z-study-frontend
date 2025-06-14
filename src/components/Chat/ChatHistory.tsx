@@ -34,16 +34,18 @@ const ChatHistorySidebar: React.FC<ChatHistorySidebarProps> = ({
 }) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [conversationToDelete, setConversationToDelete] = useState<string | null>(null);
+  const [conversationToDelete, setConversationToDelete] = useState<
+    string | null
+  >(null);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    fetchConversations(true);
-  }, [refreshTrigger]); // Refresh when trigger changes
+  // useEffect(() => {
+  //   fetchConversations(true);
+  // }, [refreshTrigger]);
 
   useEffect(() => {
     fetchConversations();

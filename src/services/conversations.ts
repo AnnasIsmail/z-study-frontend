@@ -170,16 +170,16 @@ export const getChatVersions = async (
 export const switchToVersion = async (
   chatId: string,
   data: {
-    direction: string | number;
-    versionType?: 'user' | 'assistant';
+    direction: number;
+    versionType?: "user" | "assistant";
   }
 ): Promise<SwitchVersionResponse> => {
   try {
     const response = await api.post(`/chat/${chatId}/switch-version`, {
       direction: data.direction,
-      versionType: data.versionType || 'assistant',
+      versionType: data.versionType || "assistant",
     });
-    
+
     if (response.data.success && response.data.data) {
       const result = response.data.data.result[0];
       return {
@@ -193,7 +193,8 @@ export const switchToVersion = async (
             userVersionNumber: result.userVersion,
             assistantVersionNumber: result.assistantVersion,
             isCurrentVersion: true,
-            hasMultipleVersions: response.data.data.versionInfo.totalVersions > 1,
+            hasMultipleVersions:
+              response.data.data.versionInfo.totalVersions > 1,
             totalVersions: response.data.data.versionInfo.totalVersions,
             availableVersions: [],
           },
@@ -205,7 +206,7 @@ export const switchToVersion = async (
         },
       };
     }
-    
+
     throw new Error("Invalid API response structure");
   } catch (error: any) {
     throw new Error(

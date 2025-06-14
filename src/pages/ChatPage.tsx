@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Box,
-  Container,
   Paper,
   TextField,
   Button,
@@ -19,30 +18,19 @@ import {
   Send,
   RefreshCw,
   Bot,
-  User,
   Coins,
-  Copy,
-  Check,
-  Repeat,
-  ChevronLeft,
-  ChevronRight,
-  Edit,
-  Save,
-  X,
 } from "lucide-react";
 import MainLayout from "../components/Layout/MainLayout";
 import ModelSelector from "../components/Chat/ModelSelector";
 import ChatMessage from "../components/Chat/ChatMessage";
 import ChatHistorySidebar from "../components/Chat/ChatHistory";
 import { useAuth } from "../context/AuthContext";
-import { getModels, getAllModels, chatCompletionStream } from "../services/llm";
+import { getAllModels, chatCompletionStream } from "../services/llm";
 import {
   getConversationChats,
   editMessageAndComplete,
   switchToVersion,
-  getChatVersions,
   generateResponse,
-  getChatById,
 } from "../services/conversations";
 import {
   LLMModel,
@@ -50,7 +38,6 @@ import {
   Conversation,
   StreamResponse,
 } from "../types";
-import { ChatVersion } from "../types/versioning";
 import { useNavigate, useParams } from "react-router-dom";
 import ChatHistoryXS from "../components/Chat/ChatHistoryXS";
 
@@ -154,7 +141,6 @@ const ChatPage: React.FC = () => {
 
       if (response.success && response.data) {
         const results = response.data.results || [];
-        console.log("Conversation response:", results);
 
         if (results.length > 0) {
           const processedMessages: ChatMessageType[] = [];
@@ -171,8 +157,10 @@ const ChatPage: React.FC = () => {
               isCurrentVersion: chat.isLatestVersion,
               userVersionNumber: chat.userVersion,
               versionNumber: chat.userVersion,
-              totalVersions: chat.totalVersions || 1,
+              totalUserVersions: chat.totalUserVersions || 1,
+              totalAssistantVersions: chat.totalAssistantVersions || 1,
               hasMultipleVersions: chat.hasMultipleVersions || false,
+              originalChatId: chat.originalChatId,
               editInfo: { 
                 canEdit: chat.canEdit || true,
                 isEdited: chat.versionType === 'user_edit' 
@@ -192,7 +180,9 @@ const ChatPage: React.FC = () => {
                 isCurrentVersion: chat.isLatestVersion,
                 assistantVersionNumber: chat.assistantVersion,
                 versionNumber: chat.assistantVersion,
-                totalVersions: chat.totalVersions || 1,
+                totalUserVersions: chat.totalUserVersions || 1,
+                totalAssistantVersions: chat.totalAssistantVersions || 1,
+                originalChatId: chat.originalChatId,
                 hasMultipleVersions: chat.hasMultipleVersions || false,
                 linkedUserChatId: chat.chatId, // Link to the user message
                 editInfo: { 
@@ -227,9 +217,13 @@ const ChatPage: React.FC = () => {
           setLastEvaluatedKey(response.data.lastEvaluatedKey || undefined);
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setError("Failed to load conversation");
-      console.error("Error loading conversation:", error);
+      if (error instanceof Error) {
+        console.error("Error loading conversation:", error.message);
+      } else {
+        console.error("Error loading conversation:", error);
+      }
     } finally {
       setLoadingHistory(false);
       setLoadingMore(false);
@@ -283,6 +277,8 @@ const ChatPage: React.FC = () => {
       role: "user",
       content: messageContent,
       editInfo: { canEdit: true, isEdited: false },
+      totalUserVersions: 1,
+      totalAssistantVersions: 1,
     };
 
     // Add user message immediately to UI
@@ -322,7 +318,8 @@ const ChatPage: React.FC = () => {
                 isCurrentVersion: true,
                 userVersionNumber: streamResponse.newChats.userChat.userVersionNumber,
                 versionNumber: streamResponse.newChats.userChat.userVersionNumber,
-                totalVersions: 1,
+                totalUserVersions: 1,
+                totalAssistantVersions: 1,
                 hasMultipleVersions: false,
               };
 
@@ -414,17 +411,26 @@ const ChatPage: React.FC = () => {
         role: "assistant",
         content: "",
         editInfo: { canEdit: false, isEdited: false },
-      }]);
+        isActive: true,
+        isCurrentVersion: true,
+        totalUserVersions: 1,
+        totalAssistantVersions: 1,
+        messageIndex: prev.length,
+      } as ChatMessageType]);
 
       await processStream();
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Remove the placeholder messages on error
       setMessages(prev => prev.slice(0, -2));
-      setError(
-        error.message.includes("Insufficient balance")
-          ? "Insufficient balance. Please top up to continue."
-          : error.message || "Failed to get response"
-      );
+      if (error instanceof Error) {
+        setError(
+          error.message.includes("Insufficient balance")
+            ? "Insufficient balance. Please top up to continue."
+            : error.message || "Failed to get response"
+        );
+      } else {
+        setError("Failed to get response");
+      }
     } finally {
       setLoading(false);
     }
@@ -647,7 +653,7 @@ const ChatPage: React.FC = () => {
   };
 
   // Switch to a different version using the new API
-  const handleSwitchVersion = async (messageIndex: number, direction: string) => {
+  const handleSwitchVersion = async (messageIndex: number, direction: number) => {
     const message = messages[messageIndex];
     if (!message?.chatId) return;
 
@@ -655,9 +661,13 @@ const ChatPage: React.FC = () => {
       setLoading(true);
       setError("");
 
-      const response = await switchToVersion(message.chatId, { 
+      const validVersionType = message.role === "user" || message.role === "assistant" ? message.role : undefined;
+      if (!message.originalChatId) {
+        throw new Error("originalChatId is missing for this message.");
+      }
+      const response = await switchToVersion(message.originalChatId, { 
         direction: direction,
-        versionType: message.role,
+        versionType: validVersionType,
       });
 
       if (response.success && response.data.result && response.data.result.length > 0) {
@@ -679,7 +689,8 @@ const ChatPage: React.FC = () => {
                   : switchedVersion.assistantVersion,
                 isCurrentVersion: true,
                 hasMultipleVersions: versionInfo.totalVersions > 1,
-                totalVersions: versionInfo.totalVersions,
+                totalUserVersions: versionInfo.totalUserVersions ?? 1,
+                totalAssistantVersions: versionInfo.totalAssistantVersions ?? 1,
               }
             : msg
         ));

@@ -52,73 +52,70 @@ const VersionNavigator: React.FC<VersionNavigationProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handlePreviousVersion = async () => {
+  const handlePreviousVersion = async (index: number) => {
     if (disabled || loading) return;
-    
+    console.log("Switching to previous version:", index);
+
     try {
       setLoading(true);
       setError(null);
-      await onVersionChange('prev');
+      await onVersionChange(index);
     } catch (error: any) {
-      setError(error.message || 'Failed to switch to previous version');
+      setError(error.message || "Failed to switch to previous version");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleNextVersion = async () => {
+  const handleNextVersion = async (index: number) => {
     if (disabled || loading) return;
-    
+
     try {
       setLoading(true);
       setError(null);
-      await onVersionChange('next');
+      await onVersionChange(index);
     } catch (error: any) {
-      setError(error.message || 'Failed to switch to next version');
+      setError(error.message || "Failed to switch to next version");
     } finally {
       setLoading(false);
     }
   };
 
-  const getVersionIcon = (role: 'user' | 'assistant') => {
-    return role === 'user' ? <User size={12} /> : <Bot size={12} />;
+  const getVersionIcon = (role: "user" | "assistant") => {
+    return role === "user" ? <User size={12} /> : <Bot size={12} />;
   };
 
-  const getVersionColor = (role: 'user' | 'assistant') => {
-    return role === 'user' ? 'secondary' : 'primary';
+  const getVersionColor = (role: "user" | "assistant") => {
+    return role === "user" ? "secondary" : "primary";
   };
-
-  if (!hasMultipleVersions && totalVersions <= 1) {
-    return null;
-  }
 
   return (
     <>
       <Box
         sx={{
-          display: 'flex',
-          alignItems: 'center',
+          display: "flex",
+          alignItems: "center",
           gap: 0.5,
-          border: '1px solid',
-          borderColor: 'divider',
+          border: "1px solid",
+          borderColor: "divider",
           borderRadius: 1,
-          bgcolor: 'background.paper',
-          overflow: 'hidden',
+          bgcolor: "background.paper",
+          overflow: "hidden",
           opacity: disabled ? 0.5 : 1,
-          pointerEvents: disabled ? 'none' : 'auto',
+          pointerEvents: disabled ? "none" : "auto",
         }}
       >
         <Tooltip title="Previous version">
           <IconButton
             size="small"
-            onClick={handlePreviousVersion}
+            onClick={() => handlePreviousVersion(currentVersion - 1)}
             disabled={disabled || loading}
             sx={{
               width: 24,
               height: 24,
               borderRadius: 0,
-              '&:hover': {
-                bgcolor: 'action.hover',
+              "&:hover": {
+                bgcolor: "action.hover",
               },
             }}
           >
@@ -132,21 +129,21 @@ const VersionNavigator: React.FC<VersionNavigationProps> = ({
 
         <Box
           sx={{
-            display: 'flex',
-            alignItems: 'center',
+            display: "flex",
+            alignItems: "center",
             gap: 0.5,
             px: 1,
             py: 0.5,
-            minWidth: 'auto',
+            minWidth: "auto",
           }}
         >
           {getVersionIcon(role)}
           <Typography
             variant="caption"
             sx={{
-              fontSize: '0.7rem',
+              fontSize: "0.7rem",
               fontWeight: 600,
-              color: 'text.secondary',
+              color: "text.secondary",
               lineHeight: 1,
             }}
           >
@@ -157,14 +154,14 @@ const VersionNavigator: React.FC<VersionNavigationProps> = ({
         <Tooltip title="Next version">
           <IconButton
             size="small"
-            onClick={handleNextVersion}
+            onClick={() => handleNextVersion(currentVersion + 1)}
             disabled={disabled || loading}
             sx={{
               width: 24,
               height: 24,
               borderRadius: 0,
-              '&:hover': {
-                bgcolor: 'action.hover',
+              "&:hover": {
+                bgcolor: "action.hover",
               },
             }}
           >
@@ -179,8 +176,8 @@ const VersionNavigator: React.FC<VersionNavigationProps> = ({
             sx={{
               width: 4,
               height: 4,
-              borderRadius: '50%',
-              bgcolor: 'error.main',
+              borderRadius: "50%",
+              bgcolor: "error.main",
               ml: 0.5,
             }}
           />

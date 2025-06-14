@@ -18,11 +18,11 @@ export interface ChatVersion {
 
 export interface VersionNavigationProps {
   chatId: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   currentVersion: number;
   totalVersions: number;
   hasMultipleVersions: boolean;
-  onVersionChange: (direction: string) => Promise<void>;
+  onVersionChange: (direction: number) => Promise<void>;
   disabled?: boolean;
   linkedUserChatId?: string; // For assistant messages
 }

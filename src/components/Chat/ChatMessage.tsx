@@ -121,6 +121,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     ? message.userVersionNumber || message.versionNumber || 1
     : message.assistantVersionNumber || message.versionNumber || 1;
 
+  const totalVersions = isUser
+    ? message.totalUserVersions || 1
+    : message.assistantVersionNumber || 1;
+
   return (
     <Box
       sx={{
@@ -350,17 +354,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               </Tooltip>
 
               {/* Version Navigator for User Messages */}
-              {isUser && hasVersions && message.chatId && onSwitchVersion && (
-                <VersionNavigator
-                  chatId={message.chatId}
-                  role="user"
-                  currentVersion={currentVersionNumber}
-                  totalVersions={message.totalVersions || 1}
-                  hasMultipleVersions={hasVersions}
-                  onVersionChange={handleVersionChange}
-                  disabled={loading}
-                />
-              )}
+              {/* {isUser && hasVersions && message.chatId && onSwitchVersion && ( */}
+              {/* <VersionNavigator
+                chatId={message.chatId}
+                role="user"
+                currentVersion={currentVersionNumber}
+                totalVersions={message.totalVersions || 1}
+                hasMultipleVersions={hasVersions}
+                onVersionChange={handleVersionChange}
+                disabled={loading}
+              /> */}
+              {/* )} */}
 
               {/* Regenerate button for assistant messages */}
               {!isUser && onRegenerateResponse && (
@@ -390,18 +394,18 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               )}
 
               {/* Version Navigator for Assistant Messages */}
-              {!isUser && hasVersions && message.chatId && onSwitchVersion && (
-                <VersionNavigator
-                  chatId={message.chatId}
-                  role="assistant"
-                  currentVersion={currentVersionNumber}
-                  totalVersions={message.totalVersions || 1}
-                  hasMultipleVersions={hasVersions}
-                  onVersionChange={handleVersionChange}
-                  disabled={loading}
-                  linkedUserChatId={linkedUserChatId}
-                />
-              )}
+              {/* {!isUser && hasVersions && message.chatId && onSwitchVersion && ( */}
+              <VersionNavigator
+                chatId={message.chatId}
+                role={message.role}
+                currentVersion={currentVersionNumber}
+                totalVersions={totalVersions}
+                hasMultipleVersions={hasVersions}
+                onVersionChange={handleVersionChange}
+                disabled={loading}
+                linkedUserChatId={linkedUserChatId}
+              />
+              {/* )} */}
 
               {/* Timestamp */}
               <Typography

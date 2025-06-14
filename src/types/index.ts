@@ -106,23 +106,26 @@ export interface ChatMessage {
   userId?: string;
   model?: string;
   role: "user" | "assistant" | "system";
-  content: string | {
-    prompt?: string;
-    response?: string;
-  };
+  content:
+    | string
+    | {
+        prompt?: string;
+        response?: string;
+      };
   messageIndex?: number;
   isActive?: boolean;
-  
+
   // Enhanced versioning fields
   versionNumber?: number; // Legacy field for backward compatibility
   userVersionNumber?: number; // Specific to user messages (maps to userVersion from API)
   assistantVersionNumber?: number; // Specific to assistant messages (maps to assistantVersion from API)
   isCurrentVersion?: boolean;
   hasMultipleVersions?: boolean;
-  totalVersions?: number;
+  totalUserVersions: number;
+  totalAssistantVersions: number;
   linkedUserChatId?: string; // For assistant messages - links to user message
   originalChatId?: string; // Original chat ID for version tracking
-  
+
   availableVersions?: Array<{
     versionNumber: number;
     userVersionNumber?: number;
@@ -230,7 +233,8 @@ export interface ConversationChatsResponse {
       canEdit: boolean;
       canRegenerate: boolean;
       hasMultipleVersions: boolean;
-      totalVersions: number;
+      totalUserVersions: number;
+      totalAssistantVersions: number;
       availableVersions: Array<{
         versionNumber: number;
         userVersionNumber?: number;
