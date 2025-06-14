@@ -670,6 +670,10 @@ const ChatPage: React.FC = () => {
         direction: direction,
         versionType: validVersionType,
       });
+      console.log("Switching version response:", response);
+      
+      console.log(response.success);
+      
 
       if (response.success && response.data.result && response.data.result.length > 0) {
         // The API returns multiple chat items representing the new conversation thread

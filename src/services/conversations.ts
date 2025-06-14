@@ -181,27 +181,53 @@ export const switchToVersion = async (
     });
 
     if (response.data.success && response.data.data) {
-      const result = response.data.data.result[0];
+      const apiData = response.data.data;
+      const result = apiData.result;
+      const versionInfo = apiData.versionInfo;
+
+      // Find the current version from the result array
+      const currentVersion =
+        result.find((item: any) => item.isLatestVersion) || result[0];
+
       return {
         success: true,
         message: "Version switched successfully",
         data: {
+          result: result,
+          versionInfo: versionInfo,
           switchedToVersion: {
-            chatId: result.chatId,
-            content: result.content.prompt || result.content.response || "",
-            versionNumber: result.userVersion || result.assistantVersion,
-            userVersionNumber: result.userVersion,
-            assistantVersionNumber: result.assistantVersion,
-            isCurrentVersion: true,
+            chatId: currentVersion.chatId,
+            content: currentVersion.content,
+            versionNumber: currentVersion.sequenceIndex + 1,
+            userVersionNumber: currentVersion.userVersion,
+            assistantVersionNumber: currentVersion.assistantVersion,
+            isCurrentVersion: currentVersion.isLatestVersion,
             hasMultipleVersions:
-              response.data.data.versionInfo.totalVersions > 1,
-            totalVersions: response.data.data.versionInfo.totalVersions,
-            availableVersions: [],
+              versionInfo.totalUserVersions > 1 ||
+              versionInfo.totalAssistantVersions > 1,
+            totalVersions:
+              versionInfo.totalUserVersions +
+              versionInfo.totalAssistantVersions,
+            totalUserVersions: versionInfo.totalUserVersions,
+            totalAssistantVersions: versionInfo.totalAssistantVersions,
+            versionType: currentVersion.versionType,
+            availableVersions: result.map((item: any) => ({
+              chatId: item.chatId,
+              versionNumber: item.sequenceIndex + 1,
+              userVersionNumber: item.userVersion,
+              assistantVersionNumber: item.assistantVersion,
+              isCurrentVersion: item.isLatestVersion,
+              createdAt: item.createdAt,
+              content: item.content,
+              versionType: item.versionType,
+            })),
           },
-          conversationThread: [],
+          conversationThread: result,
           switchInfo: {
             message: "Version switched successfully",
-            affectedMessages: 1,
+            affectedMessages: result.length,
+            switchedFromVersion: versionInfo.currentIndex,
+            switchedToVersion: versionInfo.currentIndex + data.direction,
           },
         },
       };

@@ -381,34 +381,111 @@ export interface SwitchVersionRequest {
 
 export interface SwitchVersionResponse {
   success: boolean;
-  message: string;
+  message?: string;
   data: {
+    result: Array<{
+      chatId: string;
+      conversationId: string;
+      userId: string;
+      model: string;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      costUSD: number;
+      costIDR: number;
+      content: {
+        prompt: string;
+        response: string;
+      };
+      filesUrl: string[];
+      userVersion: number;
+      assistantVersion: number;
+      originalChatId: string;
+      isLatestVersion: boolean;
+      parentChatId: string | null;
+      versionType: "original" | "assistant_regenerate" | "user_edit";
+      previousChatId: string | null;
+      nextChatId: string | null;
+      sequenceIndex: number;
+      isSequenceHead: boolean;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+    versionInfo: {
+      currentIndex: number;
+      totalUserVersions: number;
+      totalAssistantVersions: number;
+      hasPrevious: boolean;
+      hasNext: boolean;
+      versionType: "user" | "assistant";
+      currentUserVersion: number;
+      currentAssistantVersion: number;
+    };
     switchedToVersion: {
       chatId: string;
-      content: string;
+      content: {
+        prompt: string;
+        response: string;
+      };
       versionNumber: number;
-      userVersionNumber?: number;
-      assistantVersionNumber?: number;
+      userVersionNumber: number;
+      assistantVersionNumber: number;
       isCurrentVersion: boolean;
       hasMultipleVersions: boolean;
       totalVersions: number;
+      totalUserVersions: number;
+      totalAssistantVersions: number;
+      versionType: "original" | "assistant_regenerate" | "user_edit";
       availableVersions: Array<{
+        chatId: string;
         versionNumber: number;
-        userVersionNumber?: number;
-        assistantVersionNumber?: number;
+        userVersionNumber: number;
+        assistantVersionNumber: number;
         isCurrentVersion: boolean;
         createdAt: string;
-        content: string;
+        content: {
+          prompt: string;
+          response: string;
+        };
+        versionType: "original" | "assistant_regenerate" | "user_edit";
       }>;
     };
-    conversationThread: ChatMessage[];
+    conversationThread: Array<{
+      chatId: string;
+      conversationId: string;
+      userId: string;
+      model: string;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      costUSD: number;
+      costIDR: number;
+      content: {
+        prompt: string;
+        response: string;
+      };
+      filesUrl: string[];
+      userVersion: number;
+      assistantVersion: number;
+      originalChatId: string;
+      isLatestVersion: boolean;
+      parentChatId: string | null;
+      versionType: "original" | "assistant_regenerate" | "user_edit";
+      previousChatId: string | null;
+      nextChatId: string | null;
+      sequenceIndex: number;
+      isSequenceHead: boolean;
+      createdAt: string;
+      updatedAt: string;
+    }>;
     switchInfo: {
       message: string;
       affectedMessages: number;
+      switchedFromVersion: number;
+      switchedToVersion: number;
     };
   };
 }
-
 export interface ChatVersionsResponse {
   success: boolean;
   data: {
