@@ -646,13 +646,15 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  // Switch to a different version
+  // Switch to a different version using the new API
   const handleSwitchVersion = async (messageIndex: number, direction: string) => {
     const message = messages[messageIndex];
     if (!message?.chatId) return;
 
     try {
       setLoading(true);
+      setError("");
+
       const response = await switchToVersion(message.chatId, { 
         direction: direction,
         versionType: message.role,

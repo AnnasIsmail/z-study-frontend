@@ -22,8 +22,7 @@ export interface VersionNavigationProps {
   currentVersion: number;
   totalVersions: number;
   hasMultipleVersions: boolean;
-  onVersionChange: (versionNumber: number) => void;
-  onLoadVersions: (chatId: string) => Promise<ChatVersion[]>;
+  onVersionChange: (direction: string) => Promise<void>;
   disabled?: boolean;
   linkedUserChatId?: string; // For assistant messages
 }
@@ -84,7 +83,7 @@ export interface GenerateResponseResponse {
 }
 
 export interface SwitchVersionRequest {
-  versionNumber: number;
+  direction: string;
   versionType: 'user' | 'assistant';
 }
 

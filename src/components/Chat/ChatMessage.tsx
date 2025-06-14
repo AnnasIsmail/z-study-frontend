@@ -38,7 +38,7 @@ interface ChatMessageProps {
   darkMode?: boolean;
   onEditMessage?: (content: string, autoComplete?: boolean) => void;
   onRegenerateResponse?: () => void;
-  onSwitchVersion?: (versionNumber: number) => void;
+  onSwitchVersion?: (direction: string) => void;
   onLoadVersions?: (chatId: string) => Promise<ChatVersion[]>;
   model?: string;
   showHeader?: boolean;
@@ -96,9 +96,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     setIsEditing(false);
   };
 
-  const handleVersionChange = (versionNumber: number) => {
+  const handleVersionChange = async (direction: string) => {
     if (onSwitchVersion) {
-      onSwitchVersion(versionNumber);
+      await onSwitchVersion(direction);
     }
   };
 
@@ -324,6 +324,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 currentVersion={currentVersionNumber}
                 totalVersions={message.totalVersions}
               />
+
               {/* Copy button */}
               <Tooltip title={copied ? "Copied!" : "Copy message"}>
                 <IconButton
@@ -347,6 +348,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   {copied ? <Check size={14} /> : <Copy size={14} />}
                 </IconButton>
               </Tooltip>
+
+              {/* Version Navigator for User Messages */}
+              {isUser && hasVersions && message.chatId && onSwitchVersion && (
+                <VersionNavigator
+                  chatId={message.chatId}
+                  role="user"
+                  currentVersion={currentVersionNumber}
+                  totalVersions={message.totalVersions || 1}
+                  hasMultipleVersions={hasVersions}
+                  onVersionChange={handleVersionChange}
+                  disabled={loading}
+                />
+              )}
 
               {/* Regenerate button for assistant messages */}
               {!isUser && onRegenerateResponse && (
@@ -375,23 +389,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 </Tooltip>
               )}
 
-              {/* Version Navigator */}
-              {hasVersions &&
-                message.chatId &&
-                onSwitchVersion &&
-                onLoadVersions && (
-                  <VersionNavigator
-                    chatId={message.chatId}
-                    role={message.role}
-                    currentVersion={currentVersionNumber}
-                    totalVersions={message.totalVersions || 1}
-                    hasMultipleVersions={hasVersions}
-                    onVersionChange={handleVersionChange}
-                    onLoadVersions={onLoadVersions}
-                    disabled={loading}
-                    linkedUserChatId={linkedUserChatId}
-                  />
-                )}
+              {/* Version Navigator for Assistant Messages */}
+              {!isUser && hasVersions && message.chatId && onSwitchVersion && (
+                <VersionNavigator
+                  chatId={message.chatId}
+                  role="assistant"
+                  currentVersion={currentVersionNumber}
+                  totalVersions={message.totalVersions || 1}
+                  hasMultipleVersions={hasVersions}
+                  onVersionChange={handleVersionChange}
+                  disabled={loading}
+                  linkedUserChatId={linkedUserChatId}
+                />
+              )}
 
               {/* Timestamp */}
               <Typography
