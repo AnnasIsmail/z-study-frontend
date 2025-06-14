@@ -409,24 +409,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           </Fade>
         </Box>
       </Box>
-
-      {/* Version-related alerts */}
-      {/* {message.editInfo?.isEdited && (
-        <Alert
-          severity="info"
-          icon={<History size={16} />}
-          sx={{
-            mt: 1,
-            ml: isUser ? 6 : 0,
-            mr: isUser ? 0 : 6,
-            maxWidth: "85%",
-            alignSelf: isUser ? "flex-end" : "flex-start",
-          }}
-        >
-          This message has been edited and may have created a new conversation
-          branch.
-        </Alert>
-      )} */}
     </Box>
   );
 };
