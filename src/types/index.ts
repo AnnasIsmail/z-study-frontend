@@ -106,14 +106,17 @@ export interface ChatMessage {
   userId?: string;
   model?: string;
   role: "user" | "assistant" | "system";
-  content: string;
+  content: string | {
+    prompt?: string;
+    response?: string;
+  };
   messageIndex?: number;
   isActive?: boolean;
   
   // Enhanced versioning fields
   versionNumber?: number; // Legacy field for backward compatibility
-  userVersionNumber?: number; // Specific to user messages
-  assistantVersionNumber?: number; // Specific to assistant messages
+  userVersionNumber?: number; // Specific to user messages (maps to userVersion from API)
+  assistantVersionNumber?: number; // Specific to assistant messages (maps to assistantVersion from API)
   isCurrentVersion?: boolean;
   hasMultipleVersions?: boolean;
   totalVersions?: number;
@@ -196,7 +199,18 @@ export interface ChatHistoryResponse {
 export interface ConversationChatsResponse {
   success: boolean;
   data: {
-    results: ChatMessage[];
+    results: Array<{
+      chatId: string;
+      conversationId: string;
+      content: {
+        prompt?: string;
+        response?: string;
+      };
+      userVersion?: number;
+      assistantVersion?: number;
+      model: string;
+      createdAt: string;
+    }>;
     lastEvaluatedKey?: string;
     limit: number;
     totalResults: number;
@@ -204,7 +218,7 @@ export interface ConversationChatsResponse {
     conversationInfo: {
       conversationId: string;
       totalMessages: number;
-      activeMessages: number;
+      connectedMessages: number;
     };
   };
 }
@@ -327,8 +341,8 @@ export interface GenerateResponse {
 }
 
 export interface SwitchVersionRequest {
-  versionNumber: number;
-  versionType: 'user' | 'assistant';
+  direction: string | number;
+  versionType?: 'user' | 'assistant';
 }
 
 export interface SwitchVersionResponse {
@@ -366,23 +380,16 @@ export interface ChatVersionsResponse {
   data: {
     versions: Array<{
       chatId: string;
-      versionId: string;
-      versionNumber: number;
-      userVersionNumber?: number;
-      assistantVersionNumber?: number;
-      isCurrentVersion: boolean;
-      content: string;
-      contentPreview: string;
-      wordCount: number;
-      characterCount: number;
-      linkedUserChatId?: string;
-      originalChatId?: string;
+      userVersion?: number;
+      assistantVersion?: number;
+      isLatestVersion: boolean;
+      versionType: string;
+      content: {
+        prompt?: string;
+        response?: string;
+      };
       createdAt: string;
-      updatedAt: string;
-      versionHistory: any[];
     }>;
-    versionType: 'user' | 'assistant';
-    linkedUserChatId?: string;
   };
 }
 
