@@ -9,25 +9,27 @@ import {
   Fade,
   Alert,
 } from '@mui/material';
-import { 
-  Bot, 
-  User, 
-  Copy, 
-  Check, 
+import {
+  Bot,
+  User,
+  Copy,
+  Check,
   RotateCcw,
   GitBranch,
   History,
   AlertCircle,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
-import { ChatMessage as ChatMessageType } from '../../types';
-import { ChatVersion } from '../../types/versioning';
-import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { atomDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { format } from 'date-fns';
-import MessageEditor from './MessageEditor';
+} from "lucide-react";
+import { ChatMessage as ChatMessageType } from "../../types";
+import { ChatVersion } from "../../types/versioning";
+import ReactMarkdown from "react-markdown";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import {
+  atomDark,
+  oneLight,
+} from "react-syntax-highlighter/dist/esm/styles/prism";
+import { format } from "date-fns";
+import MessageEditor from "./MessageEditor";
+import VersionNavigator from "./VersionNavigator";
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -36,7 +38,7 @@ interface ChatMessageProps {
   darkMode?: boolean;
   onEditMessage?: (content: string, autoComplete?: boolean) => void;
   onRegenerateResponse?: () => void;
-  onSwitchVersion?: (direction: string) => void;
+  onSwitchVersion?: (versionNumber: number) => void;
   onLoadVersions?: (chatId: string) => Promise<ChatVersion[]>;
   model?: string;
   showHeader?: boolean;
@@ -68,7 +70,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [switchingVersion, setSwitchingVersion] = useState(false);
 
   const copyToClipboard = async () => {
     try {
@@ -76,7 +77,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed to copy text:', err);
+      console.error("Failed to copy text:", err);
     }
   };
 
@@ -95,35 +96,30 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     setIsEditing(false);
   };
 
-  const handleVersionSwitch = async (direction: string) => {
-    if (!onSwitchVersion || !message.chatId || switchingVersion) return;
-    
-    setSwitchingVersion(true);
-    try {
-      await onSwitchVersion(direction);
-    } finally {
-      setSwitchingVersion(false);
+  const handleVersionChange = (versionNumber: number) => {
+    if (onSwitchVersion) {
+      onSwitchVersion(versionNumber);
     }
   };
 
   const formatTimestamp = (dateString?: string) => {
     if (!dateString) return timestamp;
     try {
-      return format(new Date(dateString), 'MMM d, HH:mm');
+      return format(new Date(dateString), "MMM d, HH:mm");
     } catch {
       return timestamp;
     }
   };
 
-  const isUser = message.role === 'user';
-  const hasVersions = message.hasMultipleVersions || (message.totalVersions && message.totalVersions > 1);
+  const isUser = message.role === "user";
+  const hasVersions =
+    message.hasMultipleVersions ||
+    (message.totalVersions && message.totalVersions > 1);
 
   // Determine version number based on role
-  const currentVersionNumber = isUser 
+  const currentVersionNumber = isUser
     ? message.userVersionNumber || message.versionNumber || 1
     : message.assistantVersionNumber || message.versionNumber || 1;
-
-  const totalVersions = message.totalVersions || 1;
 
   return (
     <Box
@@ -161,11 +157,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             }}
           />
         )}
-        
+
         {hasVersions && (
           <Chip
             icon={<GitBranch size={12} />}
-            label={`${isUser ? 'User' : 'AI'} v${currentVersionNumber}/${totalVersions}`}
+            label={`${isUser ? "User" : "AI"} v${currentVersionNumber}/${
+              message.totalVersions
+            }`}
             size="small"
             color={isUser ? "secondary" : "primary"}
             variant="outlined"
@@ -298,19 +296,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           </Paper>
 
           {/* Message Editor */}
-          <MessageEditor
-            initialContent={message.content}
-            isEditing={isEditing}
-            onStartEdit={handleStartEdit}
-            onSaveEdit={handleSaveEdit}
-            onCancelEdit={handleCancelEdit}
-            canEdit={canEdit}
-            disabled={loading}
-            role={message.role}
-            hasMultipleVersions={hasVersions}
-            currentVersion={currentVersionNumber}
-            totalVersions={totalVersions}
-          />
 
           {/* Action buttons at the bottom of the message */}
           <Fade in={true}>
@@ -326,6 +311,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 transition: "opacity 0.2s ease",
               }}
             >
+              <MessageEditor
+                initialContent={message.content}
+                isEditing={isEditing}
+                onStartEdit={handleStartEdit}
+                onSaveEdit={handleSaveEdit}
+                onCancelEdit={handleCancelEdit}
+                canEdit={canEdit}
+                disabled={loading}
+                role={message.role}
+                hasMultipleVersions={hasVersions}
+                currentVersion={currentVersionNumber}
+                totalVersions={message.totalVersions}
+              />
               {/* Copy button */}
               <Tooltip title={copied ? "Copied!" : "Copy message"}>
                 <IconButton
@@ -349,74 +347,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   {copied ? <Check size={14} /> : <Copy size={14} />}
                 </IconButton>
               </Tooltip>
-
-              {/* Version Navigation for User Messages */}
-              {isUser && hasVersions && message.chatId && onSwitchVersion && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    bgcolor: 'background.paper',
-                    overflow: 'hidden',
-                    opacity: switchingVersion ? 0.5 : 1,
-                    pointerEvents: switchingVersion ? 'none' : 'auto',
-                  }}
-                >
-                  <Tooltip title="Previous version">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleVersionSwitch('prev')}
-                      disabled={loading || switchingVersion}
-                      sx={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 0,
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                        },
-                      }}
-                    >
-                      <ChevronLeft size={14} />
-                    </IconButton>
-                  </Tooltip>
-
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      px: 1,
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      color: 'text.secondary',
-                      minWidth: '40px',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {currentVersionNumber}/{totalVersions}
-                  </Typography>
-
-                  <Tooltip title="Next version">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleVersionSwitch('next')}
-                      disabled={loading || switchingVersion}
-                      sx={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 0,
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                        },
-                      }}
-                    >
-                      <ChevronRight size={14} />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              )}
 
               {/* Regenerate button for assistant messages */}
               {!isUser && onRegenerateResponse && (
@@ -445,73 +375,23 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 </Tooltip>
               )}
 
-              {/* Version Navigation for Assistant Messages */}
-              {!isUser && hasVersions && message.chatId && onSwitchVersion && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    bgcolor: 'background.paper',
-                    overflow: 'hidden',
-                    opacity: switchingVersion ? 0.5 : 1,
-                    pointerEvents: switchingVersion ? 'none' : 'auto',
-                  }}
-                >
-                  <Tooltip title="Previous version">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleVersionSwitch('prev')}
-                      disabled={loading || switchingVersion}
-                      sx={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 0,
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                        },
-                      }}
-                    >
-                      <ChevronLeft size={14} />
-                    </IconButton>
-                  </Tooltip>
-
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      px: 1,
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      color: 'text.secondary',
-                      minWidth: '40px',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {currentVersionNumber}/{totalVersions}
-                  </Typography>
-
-                  <Tooltip title="Next version">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleVersionSwitch('next')}
-                      disabled={loading || switchingVersion}
-                      sx={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 0,
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                        },
-                      }}
-                    >
-                      <ChevronRight size={14} />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              )}
+              {/* Version Navigator */}
+              {hasVersions &&
+                message.chatId &&
+                onSwitchVersion &&
+                onLoadVersions && (
+                  <VersionNavigator
+                    chatId={message.chatId}
+                    role={message.role}
+                    currentVersion={currentVersionNumber}
+                    totalVersions={message.totalVersions || 1}
+                    hasMultipleVersions={hasVersions}
+                    onVersionChange={handleVersionChange}
+                    onLoadVersions={onLoadVersions}
+                    disabled={loading}
+                    linkedUserChatId={linkedUserChatId}
+                  />
+                )}
 
               {/* Timestamp */}
               <Typography
@@ -531,7 +411,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
       </Box>
 
       {/* Version-related alerts */}
-      {message.editInfo?.isEdited && (
+      {/* {message.editInfo?.isEdited && (
         <Alert
           severity="info"
           icon={<History size={16} />}
@@ -543,9 +423,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             alignSelf: isUser ? "flex-end" : "flex-start",
           }}
         >
-          This message has been edited and may have created a new conversation branch.
+          This message has been edited and may have created a new conversation
+          branch.
         </Alert>
-      )}
+      )} */}
     </Box>
   );
 };
