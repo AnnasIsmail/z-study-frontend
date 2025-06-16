@@ -31,6 +31,7 @@ import {
   editMessageAndComplete,
   switchToVersion,
   generateResponse,
+  getConversationById, // Add this import
 } from "../services/conversations";
 import {
   LLMModel,
@@ -65,12 +66,14 @@ const ChatPage: React.FC = () => {
   >(null);
   const [snackbarMessage, setSnackbarMessage] = useState("");
   const [snackbarOpen, setSnackbarOpen] = useState(false);
-  
+
   // Lazy loading states
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
-  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<string | undefined>();
+  const [lastEvaluatedKey, setLastEvaluatedKey] = useState<
+    string | undefined
+  >();
   const [loadingMore, setLoadingMore] = useState(false);
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -126,6 +129,16 @@ const ChatPage: React.FC = () => {
         setLoadingHistory(true);
         setMessages([]);
         resetVersionState();
+
+        // Add this to fetch conversation details when loading conversation first time
+        try {
+          const conversationResponse = await getConversationById(convId);
+          if (conversationResponse) {
+            setSelectedConversation(conversationResponse);
+          }
+        } catch (error) {
+          console.error("Error fetching conversation details:", error);
+        }
       } else {
         setLoadingMore(true);
       }
@@ -139,91 +152,74 @@ const ChatPage: React.FC = () => {
         currentVersionOnly: true,
       });
 
-      if (response.success && response.data) {
-        const results = response.data.results || [];
+      if (response.success && response.data.results) {
+        const results = response.data.results;
+        const processedMessages: ChatMessageType[] = [];
 
-        if (results.length > 0) {
-          const processedMessages: ChatMessageType[] = [];
+        results.forEach((chat) => {
+          // Add user message
+          processedMessages.push({
+            chatId: chat.chatId,
+            role: "user",
+            content: chat.content.prompt,
+            messageIndex: processedMessages.length,
+            isActive: true,
+            isCurrentVersion: chat.isLatestVersion,
+            userVersion: chat.userVersion,
+            assistantVersion: chat.assistantVersion,
+            versionNumber: chat.userVersion,
+            totalUserVersion: chat.totalUserVersion,
+            totalAssistantVersion: chat.totalAssistantVersion,
+            hasMultipleVersions:
+              chat.totalUserVersion > 1 || chat.totalAssistantVersion > 1,
+            originalChatId: chat.originalChatId,
+            editInfo: {
+              canEdit: chat.canEdit,
+              isEdited: chat.versionType === "user_edit",
+            },
+            createdAt: chat.createdAt,
+          });
 
-          // Process each chat item which now contains both user and assistant content
-          results.forEach(chat => {
-            // Add user message
-            const userMessage: ChatMessageType = {
-              chatId: chat.chatId,
-              role: 'user',
-              content: chat.content.prompt,
+          // Add assistant message if response exists
+          if (chat.content.response) {
+            processedMessages.push({
+              chatId: `${chat.chatId}_assistant`,
+              role: "assistant",
+              content: chat.content.response,
               messageIndex: processedMessages.length,
               isActive: true,
               isCurrentVersion: chat.isLatestVersion,
               userVersionNumber: chat.userVersion,
-              versionNumber: chat.userVersion,
-              totalUserVersions: chat.totalUserVersions || 1,
-              totalAssistantVersions: chat.totalAssistantVersions || 1,
-              hasMultipleVersions: chat.hasMultipleVersions || false,
+              assistantVersionNumber: chat.assistantVersion,
+              versionNumber: chat.assistantVersion,
+              totalUserVersion: chat.totalUserVersion,
+              totalAssistantVersion: chat.totalAssistantVersion,
+              hasMultipleVersions:
+                chat.totalUserVersion > 1 || chat.totalAssistantVersion > 1,
               originalChatId: chat.originalChatId,
-              editInfo: { 
-                canEdit: chat.canEdit || true,
-                isEdited: chat.versionType === 'user_edit' 
+              linkedUserChatId: chat.chatId,
+              canRegenerate: chat.canRegenerate,
+              editInfo: {
+                canEdit: false,
+                isEdited: false,
               },
               createdAt: chat.createdAt,
-            };
-            processedMessages.push(userMessage);
-
-            // Add assistant message if response exists
-            if (chat.content.response) {
-              const assistantMessage: ChatMessageType = {
-                chatId: chat.chatId + '_assistant', // Create unique ID for assistant message
-                role: 'assistant',
-                content: chat.content.response,
-                messageIndex: processedMessages.length,
-                isActive: true,
-                isCurrentVersion: chat.isLatestVersion,
-                assistantVersionNumber: chat.assistantVersion,
-                versionNumber: chat.assistantVersion,
-                totalUserVersions: chat.totalUserVersions || 1,
-                totalAssistantVersions: chat.totalAssistantVersions || 1,
-                originalChatId: chat.originalChatId,
-                hasMultipleVersions: chat.hasMultipleVersions || false,
-                linkedUserChatId: chat.chatId, // Link to the user message
-                editInfo: { 
-                  canEdit: false,
-                  isEdited: false 
-                },
-                createdAt: chat.createdAt,
-              };
-              processedMessages.push(assistantMessage);
-            }
-          });
-
-          // Sort messages by creation time
-          processedMessages.sort((a, b) => 
-            new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
-          );
-
-          if (loadMore) {
-            setMessages(prev => [...processedMessages, ...prev]);
-          } else {
-            setMessages(processedMessages);
-            setSelectedConversation({
-              conversationId: convId,
-              title: `Conversation ${convId.slice(0, 8)}...`,
-              lastMessageAt: processedMessages[processedMessages.length - 1]?.createdAt || new Date().toISOString(),
-              createdAt: processedMessages[0]?.createdAt || new Date().toISOString(),
             });
           }
+        });
 
-          // Update pagination info
-          setHasMoreMessages(response.data.hasMore || false);
-          setLastEvaluatedKey(response.data.lastEvaluatedKey || undefined);
+        if (loadMore) {
+          setMessages((prev) => [...prev, ...processedMessages]);
+        } else {
+          setMessages(processedMessages);
         }
+
+        setLastEvaluatedKey(response.data.lastEvaluatedKey || undefined);
+        setHasMoreMessages(response.data.hasMore);
       }
-    } catch (error: unknown) {
+    } catch (error) {
       setError("Failed to load conversation");
-      if (error instanceof Error) {
-        console.error("Error loading conversation:", error.message);
-      } else {
-        console.error("Error loading conversation:", error);
-      }
+      console.error("Error loading conversation:", error);
     } finally {
       setLoadingHistory(false);
       setLoadingMore(false);
@@ -232,10 +228,11 @@ const ChatPage: React.FC = () => {
 
   // Lazy loading handler
   const handleScroll = useCallback(() => {
-    if (!messagesContainerRef.current || !hasMoreMessages || loadingMore) return;
-    
+    if (!messagesContainerRef.current || !hasMoreMessages || loadingMore)
+      return;
+
     const { scrollTop } = messagesContainerRef.current;
-    
+
     // Load more when scrolled to top
     if (scrollTop === 0 && conversationId) {
       loadConversationById(conversationId, true);
@@ -245,8 +242,8 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (container) {
-      container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
+      container.addEventListener("scroll", handleScroll);
+      return () => container.removeEventListener("scroll", handleScroll);
     }
   }, [handleScroll]);
 
@@ -277,24 +274,46 @@ const ChatPage: React.FC = () => {
       role: "user",
       content: messageContent,
       editInfo: { canEdit: true, isEdited: false },
-      totalUserVersions: 1,
-      totalAssistantVersions: 1,
+      totalUserVersion: 1,
+      totalAssistantVersion: 1,
     };
 
-    // Add user message immediately to UI
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
     setStreamedResponse("");
     setError("");
     setOptimizationInfo(null);
 
     try {
-      const stream = await chatCompletionStream({
+      // Find the last message's chatId, ensuring we don't use the _assistant suffix
+      const lastMessage = messages[messages.length - 1];
+      const previousChatId =
+        lastMessage?.chatId?.replace("_assistant", "") || null;
+
+      console.log({
         model: selectedModel,
-        messages: [userMessage],
+        messages: [
+          {
+            role: "user",
+            content: messageContent,
+          },
+        ],
         max_tokens: getMaxTokens(),
         conversationId: conversationId,
-        chatHistory: messages,
+        previousChatId: previousChatId,
+      });
+
+      const stream = await chatCompletionStream({
+        model: selectedModel,
+        messages: [
+          {
+            role: "user",
+            content: messageContent,
+          },
+        ],
+        max_tokens: getMaxTokens(),
+        conversationId: conversationId,
+        previousChatId: previousChatId,
       });
 
       if (!stream) throw new Error("Failed to initialize stream");
@@ -316,10 +335,12 @@ const ChatPage: React.FC = () => {
                 messageIndex: messages.length,
                 isActive: true,
                 isCurrentVersion: true,
-                userVersionNumber: streamResponse.newChats.userChat.userVersionNumber,
-                versionNumber: streamResponse.newChats.userChat.userVersionNumber,
-                totalUserVersions: 1,
-                totalAssistantVersions: 1,
+                userVersionNumber:
+                  streamResponse.newChats.userChat.userVersionNumber,
+                versionNumber:
+                  streamResponse.newChats.userChat.userVersionNumber,
+                totalUserVersion: 1,
+                totalAssistantVersion: 1,
                 hasMultipleVersions: false,
               };
 
@@ -330,16 +351,19 @@ const ChatPage: React.FC = () => {
                 messageIndex: messages.length + 1,
                 isActive: true,
                 isCurrentVersion: true,
-                assistantVersionNumber: streamResponse.newChats.assistantChat.assistantVersionNumber,
-                versionNumber: streamResponse.newChats.assistantChat.assistantVersionNumber,
+                assistantVersionNumber:
+                  streamResponse.newChats.assistantChat.assistantVersionNumber,
+                versionNumber:
+                  streamResponse.newChats.assistantChat.assistantVersionNumber,
                 totalVersions: 1,
                 hasMultipleVersions: false,
-                linkedUserChatId: streamResponse.newChats.assistantChat.linkedUserChatId,
+                linkedUserChatId:
+                  streamResponse.newChats.assistantChat.linkedUserChatId,
                 editInfo: { canEdit: false, isEdited: false },
               };
 
               // Update messages with final data
-              setMessages(prev => {
+              setMessages((prev) => {
                 const newMessages = [...prev];
                 newMessages[newMessages.length - 2] = finalUserMessage;
                 newMessages[newMessages.length - 1] = finalAssistantMessage;
@@ -407,21 +431,24 @@ const ChatPage: React.FC = () => {
       };
 
       // Add assistant message placeholder immediately
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "",
-        editInfo: { canEdit: false, isEdited: false },
-        isActive: true,
-        isCurrentVersion: true,
-        totalUserVersions: 1,
-        totalAssistantVersions: 1,
-        messageIndex: prev.length,
-      } as ChatMessageType]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "",
+          editInfo: { canEdit: false, isEdited: false },
+          isActive: true,
+          isCurrentVersion: true,
+          totalUserVersion: 1,
+          totalAssistantVersion: 1,
+          messageIndex: prev.length,
+        } as ChatMessageType,
+      ]);
 
       await processStream();
     } catch (error: unknown) {
       // Remove the placeholder messages on error
-      setMessages(prev => prev.slice(0, -2));
+      setMessages((prev) => prev.slice(0, -2));
       if (error instanceof Error) {
         setError(
           error.message.includes("Insufficient balance")
@@ -444,7 +471,11 @@ const ChatPage: React.FC = () => {
   };
 
   // Enhanced edit with auto-completion
-  const handleEditMessage = async (messageIndex: number, newContent: string, autoComplete?: boolean) => {
+  const handleEditMessage = async (
+    messageIndex: number,
+    newContent: string,
+    autoComplete?: boolean
+  ) => {
     const message = messages[messageIndex];
     if (!message?.chatId) {
       console.error("Message chatId not found");
@@ -467,14 +498,14 @@ const ChatPage: React.FC = () => {
           lastEditedAt: new Date().toISOString(),
         },
       };
-      
+
       // Remove subsequent messages temporarily if auto-completing
-      const messagesToKeep = autoComplete 
+      const messagesToKeep = autoComplete
         ? updatedMessages.slice(0, messageIndex + 1)
         : updatedMessages;
       setMessages(messagesToKeep);
 
-      if (autoComplete && message.role === 'user') {
+      if (autoComplete && message.role === "user") {
         // Call edit and complete API for user messages
         const stream = await editMessageAndComplete(message.chatId, {
           content: newContent,
@@ -493,17 +524,22 @@ const ChatPage: React.FC = () => {
             const { done, value } = await reader.read();
             if (done) {
               // Add the final assistant message
-              setMessages(prev => [...prev, {
-                role: "assistant",
-                content: accumulatedContent,
-                messageIndex: messageIndex + 1,
-                isActive: true,
-                isCurrentVersion: true,
-                editInfo: { canEdit: false, isEdited: false },
-              }]);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: "assistant",
+                  content: accumulatedContent,
+                  messageIndex: messageIndex + 1,
+                  isActive: true,
+                  isCurrentVersion: true,
+                  editInfo: { canEdit: false, isEdited: false },
+                },
+              ]);
 
               setStreamedResponse("");
-              setSnackbarMessage("Message edited and response generated successfully");
+              setSnackbarMessage(
+                "Message edited and response generated successfully"
+              );
               setSnackbarOpen(true);
               setRefreshHistoryTrigger((prev) => prev + 1);
               break;
@@ -537,11 +573,14 @@ const ChatPage: React.FC = () => {
         };
 
         // Add assistant message placeholder
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: "",
-          editInfo: { canEdit: false, isEdited: false },
-        }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "",
+            editInfo: { canEdit: false, isEdited: false },
+          },
+        ]);
 
         await processStream();
       } else {
@@ -562,7 +601,7 @@ const ChatPage: React.FC = () => {
   // Regenerate response for assistant messages
   const handleRegenerateResponse = async (messageIndex: number) => {
     const message = messages[messageIndex];
-    if (!message?.chatId || message.role !== 'assistant') {
+    if (!message?.chatId || message.role !== "assistant") {
       console.error("Invalid message for regeneration");
       return;
     }
@@ -591,14 +630,17 @@ const ChatPage: React.FC = () => {
           const { done, value } = await reader.read();
           if (done) {
             // Add the new assistant message
-            setMessages(prev => [...prev, {
-              role: "assistant",
-              content: accumulatedContent,
-              messageIndex: messageIndex,
-              isActive: true,
-              isCurrentVersion: true,
-              editInfo: { canEdit: false, isEdited: false },
-            }]);
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: accumulatedContent,
+                messageIndex: messageIndex,
+                isActive: true,
+                isCurrentVersion: true,
+                editInfo: { canEdit: false, isEdited: false },
+              },
+            ]);
 
             setStreamedResponse("");
             setSnackbarMessage("Response regenerated successfully");
@@ -635,11 +677,14 @@ const ChatPage: React.FC = () => {
       };
 
       // Add assistant message placeholder
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "",
-        editInfo: { canEdit: false, isEdited: false },
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "",
+          editInfo: { canEdit: false, isEdited: false },
+        },
+      ]);
 
       await processStream();
     } catch (error: any) {
@@ -653,9 +698,12 @@ const ChatPage: React.FC = () => {
   };
 
   // Updated switch version handler to handle multiple messages
-  const handleSwitchVersion = async (messageIndex: number, direction: number) => {
+  const handleSwitchVersion = async (
+    messageIndex: number,
+    direction: string
+  ) => {
     const message = messages[messageIndex];
-    if (!message?.originalChatId) {
+    if (!message?.chatId) {
       console.error("originalChatId is missing for this message.");
       return;
     }
@@ -664,42 +712,45 @@ const ChatPage: React.FC = () => {
       setLoading(true);
       setError("");
 
-      const validVersionType = message.role === "user" || message.role === "assistant" ? message.role : undefined;
-      
-      const response = await switchToVersion(message.originalChatId, { 
+      const validVersionType =
+        message.role === "user" || message.role === "assistant"
+          ? message.role
+          : undefined;
+
+      const response = await switchToVersion(message.chatId, {
         direction: direction,
         versionType: validVersionType,
       });
-      console.log("Switching version response:", response);
-      
-      console.log(response.success);
-      
 
-      if (response.success && response.data.result && response.data.result.length > 0) {
+      if (
+        response.success &&
+        response.data.result &&
+        response.data.result.length > 0
+      ) {
         // The API returns multiple chat items representing the new conversation thread
         const newConversationThread = response.data.result;
-        
+
         // Process the new conversation thread into messages
         const newMessages: ChatMessageType[] = [];
-        
-        newConversationThread.forEach(chat => {
+
+        newConversationThread.forEach((chat) => {
           // Add user message
           const userMessage: ChatMessageType = {
             chatId: chat.chatId,
-            role: 'user',
+            role: "user",
             content: chat.content.prompt,
             messageIndex: newMessages.length,
             isActive: true,
             isCurrentVersion: chat.isLatestVersion,
-            userVersionNumber: chat.userVersion,
-            versionNumber: chat.userVersion,
-            totalUserVersions: response.data.versionInfo.totalUserVersions || 1,
-            totalAssistantVersions: response.data.versionInfo.totalAssistantVersions || 1,
-            hasMultipleVersions: response.data.versionInfo.totalUserVersions > 1,
+            userVersion: chat.userVersion,
+            assistantVersion: chat.assistantVersion,
+            totalUserVersion: chat.totalUserVersion || 1,
+            totalAssistantVersion: chat.totalAssistantVersion || 1,
+            hasMultipleVersions: response.data.versionInfo.totalUserVersion > 1,
             originalChatId: chat.originalChatId,
-            editInfo: { 
+            editInfo: {
               canEdit: true,
-              isEdited: chat.versionType === 'user_edit' 
+              isEdited: chat.versionType === "user_edit",
             },
             createdAt: chat.createdAt,
           };
@@ -708,22 +759,24 @@ const ChatPage: React.FC = () => {
           // Add assistant message if response exists
           if (chat.content.response) {
             const assistantMessage: ChatMessageType = {
-              chatId: chat.chatId + '_assistant',
-              role: 'assistant',
+              chatId: chat.chatId + "_assistant",
+              role: "assistant",
               content: chat.content.response,
               messageIndex: newMessages.length,
               isActive: true,
               isCurrentVersion: chat.isLatestVersion,
               assistantVersionNumber: chat.assistantVersion,
               versionNumber: chat.assistantVersion,
-              totalUserVersions: response.data.versionInfo.totalUserVersions || 1,
-              totalAssistantVersions: response.data.versionInfo.totalAssistantVersions || 1,
+              totalUserVersion: response.data.versionInfo.totalUserVersion || 1,
+              totalAssistantVersion:
+                response.data.versionInfo.totalAssistantVersion || 1,
               originalChatId: chat.originalChatId,
-              hasMultipleVersions: response.data.versionInfo.totalAssistantVersions > 1,
+              hasMultipleVersions:
+                response.data.versionInfo.totalAssistantVersion > 1,
               linkedUserChatId: chat.chatId,
-              editInfo: { 
+              editInfo: {
                 canEdit: false,
-                isEdited: false 
+                isEdited: false,
               },
               createdAt: chat.createdAt,
             };
@@ -732,17 +785,21 @@ const ChatPage: React.FC = () => {
         });
 
         // Sort messages by creation time to maintain proper order
-        newMessages.sort((a, b) => 
-          new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+        newMessages.sort(
+          (a, b) =>
+            new Date(a.createdAt || 0).getTime() -
+            new Date(b.createdAt || 0).getTime()
         );
 
         // Replace messages from the switched message index onwards with the new thread
-        setMessages(prev => {
+        setMessages((prev) => {
           // Find the index of the message being switched (user message)
-          const switchedMessageIndex = prev.findIndex(msg => 
-            msg.originalChatId === message.originalChatId && msg.role === message.role
+          const switchedMessageIndex = prev.findIndex(
+            (msg) =>
+              msg.originalChatId === message.originalChatId &&
+              msg.role === message.role
           );
-          
+
           if (switchedMessageIndex === -1) {
             // If we can't find the message, replace all messages
             return newMessages;
@@ -750,7 +807,7 @@ const ChatPage: React.FC = () => {
 
           // Keep messages before the switched message and replace from that point onwards
           const messagesBeforeSwitch = prev.slice(0, switchedMessageIndex);
-          
+
           // Update message indices for the new messages
           const updatedNewMessages = newMessages.map((msg, index) => ({
             ...msg,
@@ -760,11 +817,14 @@ const ChatPage: React.FC = () => {
           return [...messagesBeforeSwitch, ...updatedNewMessages];
         });
 
-        const currentVersion = message.role === 'user' 
-          ? response.data.versionInfo.currentUserVersion
-          : response.data.versionInfo.currentAssistantVersion;
-        
-        setSnackbarMessage(`Switched to version ${currentVersion} - conversation updated`);
+        const currentVersion =
+          message.role === "user"
+            ? response.data.versionInfo.currentUserVersion
+            : response.data.versionInfo.currentAssistantVersion;
+
+        setSnackbarMessage(
+          `Switched to version ${currentVersion} - conversation updated`
+        );
         setSnackbarOpen(true);
         setRefreshHistoryTrigger((prev) => prev + 1);
       }
@@ -922,7 +982,9 @@ const ChatPage: React.FC = () => {
               </Box>
 
               {/* Model Selector */}
-              <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+              <Box
+                sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}
+              >
                 <Typography
                   variant="body2"
                   sx={{ fontWeight: 500, minWidth: "fit-content" }}
@@ -1044,7 +1106,9 @@ const ChatPage: React.FC = () => {
                 >
                   {/* Load more indicator */}
                   {loadingMore && (
-                    <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
+                    <Box
+                      sx={{ display: "flex", justifyContent: "center", py: 2 }}
+                    >
                       <CircularProgress size={24} />
                       <Typography variant="caption" sx={{ ml: 1 }}>
                         Loading more messages...
@@ -1102,7 +1166,7 @@ const ChatPage: React.FC = () => {
                             handleEditMessage(index, content, autoComplete)
                           }
                           onRegenerateResponse={
-                            message.role === "assistant" 
+                            message.role === "assistant"
                               ? () => handleRegenerateResponse(index)
                               : undefined
                           }

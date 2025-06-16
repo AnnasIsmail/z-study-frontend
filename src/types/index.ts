@@ -101,53 +101,43 @@ export interface LLMModel {
 }
 
 export interface ChatMessage {
-  chatId?: string;
-  conversationId?: string;
-  userId?: string;
-  model?: string;
-  role: "user" | "assistant" | "system";
-  content:
-    | string
-    | {
-        prompt?: string;
-        response?: string;
-      };
-  messageIndex?: number;
-  isActive?: boolean;
-
-  // Enhanced versioning fields
-  versionNumber?: number; // Legacy field for backward compatibility
-  userVersionNumber?: number; // Specific to user messages (maps to userVersion from API)
-  assistantVersionNumber?: number; // Specific to assistant messages (maps to assistantVersion from API)
-  isCurrentVersion?: boolean;
-  hasMultipleVersions?: boolean;
-  totalUserVersions: number;
-  totalAssistantVersions: number;
-  linkedUserChatId?: string; // For assistant messages - links to user message
-  originalChatId?: string; // Original chat ID for version tracking
-
-  availableVersions?: Array<{
-    versionNumber: number;
-    userVersionNumber?: number;
-    assistantVersionNumber?: number;
-    isCurrentVersion: boolean;
-    createdAt: string;
-    contentPreview: string;
-    content?: string;
-  }>;
-  editInfo?: {
-    canEdit: boolean;
-    lastEditedAt?: string;
-    isEdited: boolean;
+  chatId: string;
+  conversationId: string;
+  userId: string;
+  model: string;
+  role?: "user" | "assistant" | "system";
+  content: {
+    prompt: string;
+    response: string;
   };
-  promptTokens?: number;
-  completionTokens?: number;
-  totalTokens?: number;
-  costUSD?: number;
-  costIDR?: number;
-  filesUrl?: string[];
-  createdAt?: string;
-  updatedAt?: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUSD: number;
+  costIDR: number;
+  filesUrl: string[];
+
+  // Version control
+  userVersion: number;
+  assistantVersion: number;
+  prevUserVersion: number | null;
+  prevAssistantVersion: number | null;
+  totalUserVersion: number;
+  totalAssistantVersion: number;
+  originalChatId: string;
+  isLatestVersion: boolean;
+
+  // Sequence control
+  parentChatId: string | null;
+  versionType: "original" | "user_edit" | "assistant_regenerate";
+  previousChatId: string | null;
+  nextChatId: string | null;
+  sequenceIndex: number;
+  isSequenceHead: boolean;
+
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Conversation {
@@ -220,10 +210,14 @@ export interface ConversationChatsResponse {
       filesUrl: string[];
       userVersion: number;
       assistantVersion: number;
+      prevUserVersion: number | null;
+      prevAssistantVersion: number | null;
+      totalUserVersion: number;
+      totalAssistantVersion: number;
       originalChatId: string;
       isLatestVersion: boolean;
       parentChatId: string | null;
-      versionType: string;
+      versionType: "original" | "user_edit" | "assistant_regenerate";
       previousChatId: string | null;
       nextChatId: string | null;
       sequenceIndex: number;
@@ -232,21 +226,7 @@ export interface ConversationChatsResponse {
       updatedAt: string;
       canEdit: boolean;
       canRegenerate: boolean;
-      hasMultipleVersions: boolean;
-      totalUserVersions: number;
-      totalAssistantVersions: number;
-      availableVersions: Array<{
-        versionNumber: number;
-        userVersionNumber?: number;
-        assistantVersionNumber?: number;
-        isCurrentVersion: boolean;
-        createdAt: string;
-        contentPreview: string;
-        content?: string;
-      }>;
     }>;
-    lastEvaluatedKey?: string;
-    limit: number;
     totalResults: number;
     hasMore: boolean;
     conversationInfo: {
@@ -254,15 +234,19 @@ export interface ConversationChatsResponse {
       totalMessages: number;
       connectedMessages: number;
     };
+    lastEvaluatedKey: string | null;
   };
 }
 
 export interface StreamRequest {
   model: string;
-  messages: ChatMessage[];
+  messages: Array<{
+    role: string;
+    content: string;
+  }>;
   max_tokens?: number;
   conversationId?: string;
-  chatHistory?: ChatMessage[];
+  previousChatId?: string | null; // Add this field
 }
 
 export interface StreamResponse {
@@ -376,12 +360,11 @@ export interface GenerateResponse {
 
 export interface SwitchVersionRequest {
   direction: string | number;
-  versionType?: 'user' | 'assistant';
+  versionType?: "user" | "assistant";
 }
 
 export interface SwitchVersionResponse {
   success: boolean;
-  message?: string;
   data: {
     result: Array<{
       chatId: string;
@@ -400,10 +383,14 @@ export interface SwitchVersionResponse {
       filesUrl: string[];
       userVersion: number;
       assistantVersion: number;
+      prevUserVersion: number | null;
+      prevAssistantVersion: number | null;
+      totalUserVersion: number;
+      totalAssistantVersion: number;
       originalChatId: string;
       isLatestVersion: boolean;
       parentChatId: string | null;
-      versionType: "original" | "assistant_regenerate" | "user_edit";
+      versionType: "original" | "user_edit" | "assistant_regenerate";
       previousChatId: string | null;
       nextChatId: string | null;
       sequenceIndex: number;
@@ -413,76 +400,12 @@ export interface SwitchVersionResponse {
     }>;
     versionInfo: {
       currentIndex: number;
-      totalUserVersions: number;
-      totalAssistantVersions: number;
+      totalVersions: number;
       hasPrevious: boolean;
       hasNext: boolean;
       versionType: "user" | "assistant";
       currentUserVersion: number;
       currentAssistantVersion: number;
-    };
-    switchedToVersion: {
-      chatId: string;
-      content: {
-        prompt: string;
-        response: string;
-      };
-      versionNumber: number;
-      userVersionNumber: number;
-      assistantVersionNumber: number;
-      isCurrentVersion: boolean;
-      hasMultipleVersions: boolean;
-      totalVersions: number;
-      totalUserVersions: number;
-      totalAssistantVersions: number;
-      versionType: "original" | "assistant_regenerate" | "user_edit";
-      availableVersions: Array<{
-        chatId: string;
-        versionNumber: number;
-        userVersionNumber: number;
-        assistantVersionNumber: number;
-        isCurrentVersion: boolean;
-        createdAt: string;
-        content: {
-          prompt: string;
-          response: string;
-        };
-        versionType: "original" | "assistant_regenerate" | "user_edit";
-      }>;
-    };
-    conversationThread: Array<{
-      chatId: string;
-      conversationId: string;
-      userId: string;
-      model: string;
-      promptTokens: number;
-      completionTokens: number;
-      totalTokens: number;
-      costUSD: number;
-      costIDR: number;
-      content: {
-        prompt: string;
-        response: string;
-      };
-      filesUrl: string[];
-      userVersion: number;
-      assistantVersion: number;
-      originalChatId: string;
-      isLatestVersion: boolean;
-      parentChatId: string | null;
-      versionType: "original" | "assistant_regenerate" | "user_edit";
-      previousChatId: string | null;
-      nextChatId: string | null;
-      sequenceIndex: number;
-      isSequenceHead: boolean;
-      createdAt: string;
-      updatedAt: string;
-    }>;
-    switchInfo: {
-      message: string;
-      affectedMessages: number;
-      switchedFromVersion: number;
-      switchedToVersion: number;
     };
   };
 }

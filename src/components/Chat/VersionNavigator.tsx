@@ -52,14 +52,13 @@ const VersionNavigator: React.FC<VersionNavigationProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handlePreviousVersion = async (index: number) => {
+  const handlePreviousVersion = async () => {
     if (disabled || loading) return;
-    console.log("Switching to previous version:", index);
 
     try {
       setLoading(true);
       setError(null);
-      await onVersionChange(index);
+      await onVersionChange("prev");
     } catch (error: any) {
       setError(error.message || "Failed to switch to previous version");
     } finally {
@@ -67,13 +66,13 @@ const VersionNavigator: React.FC<VersionNavigationProps> = ({
     }
   };
 
-  const handleNextVersion = async (index: number) => {
+  const handleNextVersion = async () => {
     if (disabled || loading) return;
 
     try {
       setLoading(true);
       setError(null);
-      await onVersionChange(index);
+      await onVersionChange("next");
     } catch (error: any) {
       setError(error.message || "Failed to switch to next version");
     } finally {
@@ -108,7 +107,7 @@ const VersionNavigator: React.FC<VersionNavigationProps> = ({
         <Tooltip title="Previous version">
           <IconButton
             size="small"
-            onClick={() => handlePreviousVersion(currentVersion - 1)}
+            onClick={handlePreviousVersion}
             disabled={disabled || loading}
             sx={{
               width: 24,
@@ -154,7 +153,7 @@ const VersionNavigator: React.FC<VersionNavigationProps> = ({
         <Tooltip title="Next version">
           <IconButton
             size="small"
-            onClick={() => handleNextVersion(currentVersion + 1)}
+            onClick={handleNextVersion}
             disabled={disabled || loading}
             sx={{
               width: 24,

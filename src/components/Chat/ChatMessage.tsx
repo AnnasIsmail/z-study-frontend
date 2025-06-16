@@ -112,18 +112,18 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   };
 
   const isUser = message.role === "user";
-  const hasVersions =
-    message.hasMultipleVersions ||
-    (message.totalVersions && message.totalVersions > 1);
+  const hasVersions = isUser
+    ? message.totalUserVersion > 1
+    : message.totalAssistantVersion > 1;
 
   // Determine version number based on role
   const currentVersionNumber = isUser
-    ? message.userVersionNumber || message.versionNumber || 1
-    : message.assistantVersionNumber || message.versionNumber || 1;
+    ? message.userVersion || 1
+    : message.assistantVersion || 1;
 
   const totalVersions = isUser
-    ? message.totalUserVersions || 1
-    : message.assistantVersionNumber || 1;
+    ? message.totalUserVersion || 1
+    : message.totalAssistantVersion || 1;
 
   return (
     <Box

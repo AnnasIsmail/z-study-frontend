@@ -59,7 +59,7 @@ export const chatCompletionStream = async (
     messages: request.messages,
     max_tokens: request.max_tokens,
     conversationId: request.conversationId,
-    chatHistory: request.chatHistory || []
+    previousChatId: request.previousChatId,
   };
 
   const response = await fetch(`${api.defaults.baseURL}/chat/stream`, {

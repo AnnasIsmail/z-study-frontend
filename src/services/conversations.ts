@@ -73,18 +73,14 @@ export const getConversationChats = async (
         sortOrder: params.sortOrder || "asc",
         activeOnly: params.activeOnly !== false,
         currentVersionOnly: params.currentVersionOnly !== false,
-        ...params,
       },
     });
-    
-    if (response.data.success && response.data.data) {
-      return {
-        success: true,
-        data: response.data.data,
-      };
+
+    if (!response.data.success) {
+      throw new Error("Failed to fetch conversation chats");
     }
-    
-    throw new Error("Invalid API response structure");
+
+    return response.data;
   } catch (error: any) {
     throw new Error(
       error.response?.data?.message || "Failed to fetch conversation chats"
@@ -95,7 +91,7 @@ export const getConversationChats = async (
 export const getChatById = async (chatId: string) => {
   try {
     const response = await api.get(`/chat/${chatId}`);
-    
+
     if (response.data.success && response.data.data) {
       const chat = response.data.data;
       return {
@@ -111,7 +107,7 @@ export const getChatById = async (chatId: string) => {
         },
       };
     }
-    
+
     throw new Error("Invalid API response structure");
   } catch (error: any) {
     throw new Error(error.response?.data?.message || "Failed to fetch chat");
@@ -122,14 +118,14 @@ export const getChatById = async (chatId: string) => {
 export const getChatVersions = async (
   chatId: string,
   params: {
-    versionType?: 'user' | 'assistant';
+    versionType?: "user" | "assistant";
     limit?: number;
     page?: number;
   } = {}
 ): Promise<ChatVersionsResponse> => {
   try {
     const response = await api.get(`/chat/${chatId}/versions`);
-    
+
     if (response.data.success && response.data.data) {
       const versions = response.data.data.versions.map((version: any) => ({
         chatId: version.chatId,
@@ -139,11 +135,23 @@ export const getChatVersions = async (
         assistantVersionNumber: version.assistantVersion,
         isCurrentVersion: version.isLatestVersion,
         content: version.content.prompt || version.content.response || "",
-        contentPreview: (version.content.prompt || version.content.response || "").substring(0, 100),
+        contentPreview: (
+          version.content.prompt ||
+          version.content.response ||
+          ""
+        ).substring(0, 100),
         createdAt: version.createdAt,
         updatedAt: version.createdAt,
-        wordCount: (version.content.prompt || version.content.response || "").split(' ').length,
-        characterCount: (version.content.prompt || version.content.response || "").length,
+        wordCount: (
+          version.content.prompt ||
+          version.content.response ||
+          ""
+        ).split(" ").length,
+        characterCount: (
+          version.content.prompt ||
+          version.content.response ||
+          ""
+        ).length,
         linkedUserChatId: version.linkedUserChatId,
         originalChatId: version.chatId,
       }));
@@ -152,12 +160,12 @@ export const getChatVersions = async (
         success: true,
         data: {
           versions,
-          versionType: params.versionType || 'assistant',
+          versionType: params.versionType || "assistant",
           linkedUserChatId: undefined,
         },
       };
     }
-    
+
     throw new Error("Invalid API response structure");
   } catch (error: any) {
     throw new Error(
@@ -170,70 +178,22 @@ export const getChatVersions = async (
 export const switchToVersion = async (
   chatId: string,
   data: {
-    direction: number;
+    direction: string;
     versionType?: "user" | "assistant";
   }
 ): Promise<SwitchVersionResponse> => {
   try {
     const response = await api.post(`/chat/${chatId}/switch-version`, {
       direction: data.direction,
-      versionType: data.versionType || "assistant",
+      versionType: data.versionType || "user",
     });
 
-    if (response.data.success && response.data.data) {
-      const apiData = response.data.data;
-      const result = apiData.result;
-      const versionInfo = apiData.versionInfo;
-
-      // Find the current version from the result array
-      const currentVersion =
-        result.find((item: any) => item.isLatestVersion) || result[0];
-
-      return {
-        success: true,
-        message: "Version switched successfully",
-        data: {
-          result: result,
-          versionInfo: versionInfo,
-          switchedToVersion: {
-            chatId: currentVersion.chatId,
-            content: currentVersion.content,
-            versionNumber: currentVersion.sequenceIndex + 1,
-            userVersionNumber: currentVersion.userVersion,
-            assistantVersionNumber: currentVersion.assistantVersion,
-            isCurrentVersion: currentVersion.isLatestVersion,
-            hasMultipleVersions:
-              versionInfo.totalUserVersions > 1 ||
-              versionInfo.totalAssistantVersions > 1,
-            totalVersions:
-              versionInfo.totalUserVersions +
-              versionInfo.totalAssistantVersions,
-            totalUserVersions: versionInfo.totalUserVersions,
-            totalAssistantVersions: versionInfo.totalAssistantVersions,
-            versionType: currentVersion.versionType,
-            availableVersions: result.map((item: any) => ({
-              chatId: item.chatId,
-              versionNumber: item.sequenceIndex + 1,
-              userVersionNumber: item.userVersion,
-              assistantVersionNumber: item.assistantVersion,
-              isCurrentVersion: item.isLatestVersion,
-              createdAt: item.createdAt,
-              content: item.content,
-              versionType: item.versionType,
-            })),
-          },
-          conversationThread: result,
-          switchInfo: {
-            message: "Version switched successfully",
-            affectedMessages: result.length,
-            switchedFromVersion: versionInfo.currentIndex,
-            switchedToVersion: versionInfo.currentIndex + data.direction,
-          },
-        },
-      };
+    if (!response.data.success) {
+      throw new Error("Failed to switch version");
     }
+    console.log(response.data);
 
-    throw new Error("Invalid API response structure");
+    return response.data;
   } catch (error: any) {
     throw new Error(
       error.response?.data?.message || "Failed to switch version"

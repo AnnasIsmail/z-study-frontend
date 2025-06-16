@@ -22,7 +22,7 @@ export interface VersionNavigationProps {
   currentVersion: number;
   totalVersions: number;
   hasMultipleVersions: boolean;
-  onVersionChange: (direction: number) => Promise<void>;
+  onVersionChange: (direction: string) => Promise<void>;
   disabled?: boolean;
   linkedUserChatId?: string; // For assistant messages
 }
@@ -85,29 +85,6 @@ export interface GenerateResponseResponse {
 export interface SwitchVersionRequest {
   direction: string;
   versionType: 'user' | 'assistant';
-}
-
-export interface SwitchVersionResponse {
-  success: boolean;
-  message: string;
-  data: {
-    switchedToVersion: {
-      chatId: string;
-      content: string;
-      versionNumber: number;
-      userVersionNumber?: number;
-      assistantVersionNumber?: number;
-      isCurrentVersion: boolean;
-      hasMultipleVersions: boolean;
-      totalVersions: number;
-      availableVersions: ChatVersion[];
-    };
-    conversationThread: ChatMessage[];
-    switchInfo: {
-      message: string;
-      affectedMessages: number;
-    };
-  };
 }
 
 export interface ChatVersionsResponse {
