@@ -62,17 +62,23 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
           px: 2,
           borderRadius: 2,
           transition: "all 0.2s",
-          border: '2px solid',
-          borderColor: 'primary.main',
-          bgcolor: selectedModelDetails ? 'primary.main' : 'transparent',
-          color: selectedModelDetails ? 'white' : 'primary.main',
+          border: "2px solid",
+          borderColor: "primary.main",
+          bgcolor: selectedModelDetails ? "primary.main" : "transparent",
+          color: selectedModelDetails ? "white" : "primary.main",
           "&:hover": {
-            backgroundColor: selectedModelDetails ? 'primary.dark' : theme.palette.action.hover,
-            borderColor: 'primary.main',
+            backgroundColor: selectedModelDetails
+              ? "primary.dark"
+              : theme.palette.action.hover,
+            borderColor: "primary.main",
           },
         }}
         endIcon={
-          loading ? <CircularProgress size={16} color="inherit" /> : <ChevronDown size={16} />
+          loading ? (
+            <CircularProgress size={16} color="inherit" />
+          ) : (
+            <ChevronDown size={16} />
+          )
         }
       >
         <Box sx={{ display: "flex", alignItems: "center", width: "100%" }}>
@@ -86,29 +92,29 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({
               }}
             >
               <Box sx={{ display: "flex", alignItems: "center" }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 600, paddingRight: "10px" }}
+                >
                   {selectedModelDetails.name}
                 </Typography>
                 {supportsImages(selectedModelDetails) && (
                   <Chip
                     label="Image"
                     size="small"
-                    sx={{ 
-                      ml: 1, 
-                      height: 20, 
+                    sx={{
+                      ml: 1,
+                      height: 20,
                       fontSize: "0.6rem",
-                      bgcolor: 'rgba(255,255,255,0.2)',
-                      color: 'inherit',
+                      bgcolor: "rgba(255,255,255,0.2)",
+                      color: "inherit",
                     }}
                   />
                 )}
               </Box>
 
               <Box sx={{ display: "flex", alignItems: "center" }}>
-                <Typography
-                  variant="caption"
-                  sx={{ mr: 1, opacity: 0.8 }}
-                >
+                <Typography variant="caption" sx={{ mr: 1, opacity: 0.8 }}>
                   {((selectedModelDetails.context_length || 0) / 1000).toFixed(
                     0
                   )}

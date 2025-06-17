@@ -143,11 +143,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           alignItems: "center",
           mb: 0.5,
           justifyContent: isUser ? "flex-end" : "flex-start",
-          mr: isUser ? 6 : 0,
-          ml: isUser ? 0 : 6,
+          // mr: isUser ? 6 : 0,
+          // ml: isUser ? 0 : 6,
         }}
       >
-        {message.editInfo?.isEdited && (
+        {/* {message.editInfo?.isEdited && (
           <Chip
             label="Edited"
             size="small"
@@ -160,9 +160,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               },
             }}
           />
-        )}
+        )} */}
 
-        {hasVersions && (
+        {/* {hasVersions && (
           <Chip
             icon={<GitBranch size={12} />}
             label={`${isUser ? "User" : "AI"} v${currentVersionNumber}/${
@@ -179,22 +179,18 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               },
             }}
           />
-        )}
+        )} */}
 
         {/* Show linked user message indicator for assistant responses */}
-        {!isUser && linkedUserChatId && (
+        {!isUser && (
           <Chip
-            icon={<User size={10} />}
-            label="Linked"
+            label={`Using ${message.model}`}
             size="small"
             color="info"
             variant="outlined"
             sx={{
-              fontSize: "0.6rem",
+              fontSize: "0.7rem",
               height: 16,
-              "& .MuiChip-label": {
-                px: 0.5,
-              },
             }}
           />
         )}
@@ -211,7 +207,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         }}
       >
         {/* Avatar */}
-        <Box
+        {/* <Box
           sx={{
             width: 36,
             height: 36,
@@ -225,7 +221,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           }}
         >
           {isUser ? <User size={20} /> : <Bot size={20} />}
-        </Box>
+        </Box> */}
 
         {/* Message Bubble */}
         <Box

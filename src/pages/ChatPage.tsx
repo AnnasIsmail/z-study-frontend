@@ -161,6 +161,7 @@ const ChatPage: React.FC = () => {
           processedMessages.push({
             chatId: chat.chatId,
             role: "user",
+            model: chat.model,
             content: chat.content.prompt,
             messageIndex: processedMessages.length,
             isActive: true,
@@ -183,14 +184,15 @@ const ChatPage: React.FC = () => {
           // Add assistant message if response exists
           if (chat.content.response) {
             processedMessages.push({
-              chatId: `${chat.chatId}_assistant`,
+              chatId: chat.chatId, // Removed _assistant suffix
               role: "assistant",
+            model: chat.model,
               content: chat.content.response,
               messageIndex: processedMessages.length,
               isActive: true,
               isCurrentVersion: chat.isLatestVersion,
-              userVersionNumber: chat.userVersion,
-              assistantVersionNumber: chat.assistantVersion,
+              userVersion: chat.userVersion,
+              assistantVersion: chat.assistantVersion,
               versionNumber: chat.assistantVersion,
               totalUserVersion: chat.totalUserVersion,
               totalAssistantVersion: chat.totalAssistantVersion,
@@ -278,7 +280,7 @@ const ChatPage: React.FC = () => {
       totalAssistantVersion: 1,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]); // Hanya tambahkan user message
     setLoading(true);
     setStreamedResponse("");
     setError("");
@@ -287,8 +289,7 @@ const ChatPage: React.FC = () => {
     try {
       // Find the last message's chatId, ensuring we don't use the _assistant suffix
       const lastMessage = messages[messages.length - 1];
-      const previousChatId =
-        lastMessage?.chatId?.replace("_assistant", "") || null;
+      const previousChatId = lastMessage?.chatId || null; // Removed replace("_assistant", "")
 
       console.log({
         model: selectedModel,
@@ -430,25 +431,10 @@ const ChatPage: React.FC = () => {
         }
       };
 
-      // Add assistant message placeholder immediately
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "",
-          editInfo: { canEdit: false, isEdited: false },
-          isActive: true,
-          isCurrentVersion: true,
-          totalUserVersion: 1,
-          totalAssistantVersion: 1,
-          messageIndex: prev.length,
-        } as ChatMessageType,
-      ]);
-
       await processStream();
     } catch (error: unknown) {
       // Remove the placeholder messages on error
-      setMessages((prev) => prev.slice(0, -2));
+      setMessages((prev) => prev.slice(0, -1));
       if (error instanceof Error) {
         setError(
           error.message.includes("Insufficient balance")
@@ -476,37 +462,35 @@ const ChatPage: React.FC = () => {
     newContent: string,
     autoComplete?: boolean
   ) => {
-    const message = messages[messageIndex];
-    if (!message?.chatId) {
-      console.error("Message chatId not found");
-      return;
-    }
-
     try {
       setLoading(true);
       setError("");
       setStreamedResponse("");
+      
+      // Get the message from messages array using messageIndex
+      const message = messages[messageIndex];
+      if (!message) {
+        throw new Error("Message not found");
+      }
 
-      // Update message immediately in UI
+      // Update message content
       const updatedMessages = [...messages];
       updatedMessages[messageIndex] = {
-        ...message,
+        ...message, // Use the retrieved message
         content: newContent,
         editInfo: {
           ...message.editInfo,
           isEdited: true,
-          lastEditedAt: new Date().toISOString(),
         },
       };
 
-      // Remove subsequent messages temporarily if auto-completing
+      // Remove subsequent messages if auto-completing
       const messagesToKeep = autoComplete
         ? updatedMessages.slice(0, messageIndex + 1)
         : updatedMessages;
       setMessages(messagesToKeep);
 
-      if (autoComplete && message.role === "user") {
-        // Call edit and complete API for user messages
+      if (autoComplete) {
         const stream = await editMessageAndComplete(message.chatId, {
           content: newContent,
           model: selectedModel,
@@ -572,16 +556,6 @@ const ChatPage: React.FC = () => {
           }
         };
 
-        // Add assistant message placeholder
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "",
-            editInfo: { canEdit: false, isEdited: false },
-          },
-        ]);
-
         await processStream();
       } else {
         // Simple edit without auto-completion
@@ -595,6 +569,7 @@ const ChatPage: React.FC = () => {
       setSnackbarOpen(true);
     } finally {
       setLoading(false);
+      setStreamingMessageIndex(null); // Reset streaming index
     }
   };
 
@@ -676,16 +651,6 @@ const ChatPage: React.FC = () => {
         }
       };
 
-      // Add assistant message placeholder
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "",
-          editInfo: { canEdit: false, isEdited: false },
-        },
-      ]);
-
       await processStream();
     } catch (error: any) {
       console.error("Regenerate response error:", error);
@@ -713,8 +678,8 @@ const ChatPage: React.FC = () => {
       setError("");
 
       const validVersionType =
-        message.role === "user" || message.role === "assistant"
-          ? message.role
+        message.role === "user" || message.role === "assistant" 
+          ? message.role 
           : undefined;
 
       const response = await switchToVersion(message.chatId, {
@@ -722,57 +687,54 @@ const ChatPage: React.FC = () => {
         versionType: validVersionType,
       });
 
-      if (
-        response.success &&
-        response.data.result &&
-        response.data.result.length > 0
-      ) {
-        // The API returns multiple chat items representing the new conversation thread
+      if (response.success && response.data.result && response.data.result.length > 0) {
         const newConversationThread = response.data.result;
-
-        // Process the new conversation thread into messages
         const newMessages: ChatMessageType[] = [];
-
+        console.log(newConversationThread);
+        
         newConversationThread.forEach((chat) => {
-          // Add user message
-          const userMessage: ChatMessageType = {
-            chatId: chat.chatId,
-            role: "user",
-            content: chat.content.prompt,
-            messageIndex: newMessages.length,
-            isActive: true,
-            isCurrentVersion: chat.isLatestVersion,
-            userVersion: chat.userVersion,
-            assistantVersion: chat.assistantVersion,
-            totalUserVersion: chat.totalUserVersion || 1,
-            totalAssistantVersion: chat.totalAssistantVersion || 1,
-            hasMultipleVersions: response.data.versionInfo.totalUserVersion > 1,
-            originalChatId: chat.originalChatId,
-            editInfo: {
-              canEdit: true,
-              isEdited: chat.versionType === "user_edit",
-            },
-            createdAt: chat.createdAt,
-          };
-          newMessages.push(userMessage);
+          // Add user message only if it's the first message or if we're switching a user message
+          if (chat.content.prompt && 
+              (newMessages.length === 0 || message.role === "user")) {
+            const userMessage: ChatMessageType = {
+              chatId: chat.chatId,
+              role: "user",
+              model: chat.model,
+              content: chat.content.prompt,
+              messageIndex: newMessages.length,
+              isActive: true,
+              isCurrentVersion: chat.isLatestVersion,
+              userVersion: chat.userVersion,
+              assistantVersion: chat.assistantVersion,
+              totalUserVersion: chat.totalUserVersion || 1,
+              totalAssistantVersion: chat.totalAssistantVersion || 1,
+              hasMultipleVersions: response.data.versionInfo.totalUserVersion > 1,
+              originalChatId: chat.originalChatId,
+              editInfo: {
+                canEdit: true,
+                isEdited: chat.versionType === "user_edit",
+              },
+              createdAt: chat.createdAt,
+            };
+            newMessages.push(userMessage);
+          }
 
-          // Add assistant message if response exists
+          // Add assistant message
           if (chat.content.response) {
             const assistantMessage: ChatMessageType = {
-              chatId: chat.chatId + "_assistant",
+              chatId: chat.chatId,
               role: "assistant",
+              model: chat.model,
               content: chat.content.response,
               messageIndex: newMessages.length,
               isActive: true,
               isCurrentVersion: chat.isLatestVersion,
-              assistantVersionNumber: chat.assistantVersion,
-              versionNumber: chat.assistantVersion,
-              totalUserVersion: response.data.versionInfo.totalUserVersion || 1,
-              totalAssistantVersion:
-                response.data.versionInfo.totalAssistantVersion || 1,
+              assistantVersion: chat.assistantVersion,
+              userVersion: chat.userVersion,
+              totalUserVersion: chat.totalUserVersion || 1,
+              totalAssistantVersion: chat.totalAssistantVersion || 1,
               originalChatId: chat.originalChatId,
-              hasMultipleVersions:
-                response.data.versionInfo.totalAssistantVersion > 1,
+              hasMultipleVersions: chat.totalAssistantVersion > 1 || chat.totalUserVersion > 1,
               linkedUserChatId: chat.chatId,
               editInfo: {
                 canEdit: false,
@@ -784,36 +746,27 @@ const ChatPage: React.FC = () => {
           }
         });
 
-        // Sort messages by creation time to maintain proper order
-        newMessages.sort(
-          (a, b) =>
-            new Date(a.createdAt || 0).getTime() -
-            new Date(b.createdAt || 0).getTime()
-        );
-
-        // Replace messages from the switched message index onwards with the new thread
+        // Update messages in state
         setMessages((prev) => {
-          // Find the index of the message being switched (user message)
+          // Find the index of the message we're switching
           const switchedMessageIndex = prev.findIndex(
-            (msg) =>
-              msg.originalChatId === message.originalChatId &&
-              msg.role === message.role
+            (msg) => msg.originalChatId === message.originalChatId
           );
 
           if (switchedMessageIndex === -1) {
-            // If we can't find the message, replace all messages
             return newMessages;
           }
 
-          // Keep messages before the switched message and replace from that point onwards
+          // Get messages before the switched message
           const messagesBeforeSwitch = prev.slice(0, switchedMessageIndex);
 
-          // Update message indices for the new messages
+          // Update message indices for new messages
           const updatedNewMessages = newMessages.map((msg, index) => ({
             ...msg,
             messageIndex: messagesBeforeSwitch.length + index,
           }));
 
+          // Replace old messages with new ones
           return [...messagesBeforeSwitch, ...updatedNewMessages];
         });
 
@@ -873,6 +826,9 @@ const ChatPage: React.FC = () => {
     id: model.id,
     name: model.name,
   }));
+
+  // Tambahkan state baru untuk tracking pesan yang sedang streaming
+  const [streamingMessageIndex, setStreamingMessageIndex] = useState<number | null>(null);
 
   return (
     <MainLayout hideFooter>
@@ -991,7 +947,7 @@ const ChatPage: React.FC = () => {
                 >
                   AI Model:
                 </Typography>
-                <Box sx={{ maxWidth: 400, minWidth: 300 }}>
+                <Box>
                   <ModelSelector
                     models={models}
                     selectedModel={selectedModel}
@@ -1000,7 +956,7 @@ const ChatPage: React.FC = () => {
                     disabled={loading}
                   />
                 </Box>
-                {selectedModelName && (
+                {/* {selectedModelName && (
                   <Chip
                     label={`Using ${selectedModelName}`}
                     size="small"
@@ -1008,7 +964,7 @@ const ChatPage: React.FC = () => {
                     variant="outlined"
                     sx={{ ml: 1 }}
                   />
-                )}
+                )} */}
               </Box>
 
               {/* Optimization Info */}
@@ -1152,7 +1108,7 @@ const ChatPage: React.FC = () => {
                     <>
                       {messages.map((message, index) => (
                         <ChatMessage
-                          key={`${message.chatId || index}`}
+                          key={`${message.chatId}_${message.role}_${index}`}
                           message={message}
                           model={
                             message.role === "assistant"
@@ -1192,6 +1148,7 @@ const ChatPage: React.FC = () => {
                           model={selectedModelName}
                           showHeader={true}
                           timestamp="Now"
+                          messageIndex={messages.length} // Gunakan messages.length untuk index yang benar
                         />
                       )}
                     </>
