@@ -1,248 +1,58 @@
 import React from 'react';
-import { AppBar, Toolbar, Typography, Button, IconButton, Box, Avatar, Menu, MenuItem, Divider } from '@mui/material';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { Sun, Moon, Menu as MenuIcon, LogOut, User as UserIcon, Settings } from 'lucide-react';
-import { useTheme } from '../../context/ThemeContext';
-import { useAuth } from '../../context/AuthContext';
+import { Link } from 'react-router-dom';
+import { Moon, Sun, User, LogOut } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
+import Button from '../ui/Button';
 
 const Header: React.FC = () => {
-  const { mode, toggleTheme } = useTheme();
-  const { isAuthenticated, user, logout } = useAuth();
-  const navigate = useNavigate();
-  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-  const [mobileMenuAnchorEl, setMobileMenuAnchorEl] = React.useState<null | HTMLElement>(null);
-
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMobileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setMobileMenuAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  const handleMobileMenuClose = () => {
-    setMobileMenuAnchorEl(null);
-  };
-
-  const handleLogout = () => {
-    logout();
-    handleMenuClose();
-    navigate('/');
-  };
-
-  const handleProfile = () => {
-    handleMenuClose();
-    navigate('/profile');
-  };
+  const { isDark, toggleTheme } = useTheme();
+  const { user, logout, isAuthenticated } = useAuth();
 
   return (
-    <AppBar 
-      position="sticky" 
-      elevation={0}
-      sx={{
-        backgroundColor: mode === 'light' ? 'white' : 'background.paper',
-        color: mode === 'light' ? 'text.primary' : 'text.primary',
-        borderBottom: 1,
-        borderColor: 'divider',
-      }}
-    >
-      <Toolbar>
-        <Typography 
-          variant="h6" 
-          component={RouterLink} 
-          to="/" 
-          sx={{ 
-            flexGrow: 1, 
-            textDecoration: 'none', 
-            color: 'inherit',
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-          }}
-        >
-          <Box 
-            component="span" 
-            sx={{ 
-              color: 'primary.main', 
-              mr: 1,
-              fontSize: '1.5rem',
-              fontWeight: 800,
-            }}
-          >
-            AI
-          </Box>
-          Studio
-        </Typography>
+    <header className="sticky top-0 z-50 bg-[var(--color-background)]/80 backdrop-blur-md border-b border-[var(--color-border)]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          <Link to="/" className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">AI</span>
+            </div>
+            <span className="text-xl font-bold text-[var(--color-text-primary)]">Platform</span>
+          </Link>
 
-        {/* Desktop navigation */}
-        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 2 }}>
-          <IconButton onClick={toggleTheme} color="inherit" size="small">
-            {mode === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-          </IconButton>
-
-          {isAuthenticated ? (
-            <>
-              <Button 
-                component={RouterLink} 
-                to="/dashboard" 
-                color="inherit"
-                sx={{ fontWeight: 600 }}
-              >
-                Dashboard
-              </Button>
-              <Box>
-                <IconButton 
-                  onClick={handleMenuOpen}
-                  sx={{ padding: 0.5 }}
-                >
-                  <Avatar 
-                    sx={{ 
-                      width: 36, 
-                      height: 36,
-                      bgcolor: 'primary.main',
-                      fontSize: '1rem',
-                    }}
-                  >
-                    {user?.name?.charAt(0).toUpperCase() || 'U'}
-                  </Avatar>
-                </IconButton>
-                <Menu
-                  anchorEl={anchorEl}
-                  open={Boolean(anchorEl)}
-                  onClose={handleMenuClose}
-                  PaperProps={{
-                    elevation: 3,
-                    sx: { minWidth: 180, borderRadius: 2 }
-                  }}
-                >
-                  <Box sx={{ py: 1, px: 2 }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      {user?.name || 'User'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {user?.email || ''}
-                    </Typography>
-                    <Typography variant="body2" sx={{ mt: 1, color: 'primary.main', fontWeight: 500 }}>
-                      Balance: {user?.balance?.toLocaleString() || 0} IDR
-                    </Typography>
-                  </Box>
-                  <Divider />
-                  <MenuItem onClick={handleProfile} sx={{ gap: 1.5 }}>
-                    <UserIcon size={18} />
-                    <Typography variant="body2">Profile</Typography>
-                  </MenuItem>
-                  <MenuItem onClick={handleLogout} sx={{ gap: 1.5 }}>
-                    <LogOut size={18} />
-                    <Typography variant="body2">Logout</Typography>
-                  </MenuItem>
-                </Menu>
-              </Box>
-            </>
-          ) : (
-            <>
-              <Button 
-                component={RouterLink} 
-                to="/login" 
-                color="inherit"
-                sx={{ fontWeight: 600 }}
-              >
-                Login
-              </Button>
-              <Button
-                component={RouterLink}
-                to="/register"
-                variant="contained"
-                color="primary"
-                sx={{ fontWeight: 600 }}
-              >
-                Register
-              </Button>
-            </>
-          )}
-        </Box>
-
-        {/* Mobile navigation */}
-        <Box sx={{ display: { xs: 'flex', md: 'none' } }}>
-          <IconButton
-            color="inherit"
-            onClick={handleMobileMenuOpen}
-          >
-            <MenuIcon />
-          </IconButton>
-          <Menu
-            anchorEl={mobileMenuAnchorEl}
-            open={Boolean(mobileMenuAnchorEl)}
-            onClose={handleMobileMenuClose}
-            PaperProps={{
-              elevation: 3,
-              sx: { minWidth: 200, borderRadius: 2 }
-            }}
-          >
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={isDark ? Sun : Moon}
+              onClick={toggleTheme}
+              className="p-2"
+            />
+            
             {isAuthenticated ? (
-              <>
-                <Box sx={{ py: 1, px: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    {user?.name || 'User'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {user?.email || ''}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 1, color: 'primary.main', fontWeight: 500 }}>
-                    Balance: {user?.balance?.toLocaleString() || 0} IDR
-                  </Typography>
-                </Box>
-                <Divider />
-                <MenuItem 
-                  component={RouterLink} 
-                  to="/dashboard"
-                  onClick={handleMobileMenuClose}
-                >
-                  Dashboard
-                </MenuItem>
-                <MenuItem 
-                  component={RouterLink} 
-                  to="/profile"
-                  onClick={handleMobileMenuClose}
-                >
-                  Profile
-                </MenuItem>
-                <MenuItem onClick={toggleTheme}>
-                  {mode === 'light' ? 'Dark Mode' : 'Light Mode'}
-                </MenuItem>
-                <Divider />
-                <MenuItem onClick={handleLogout}>
-                  Logout
-                </MenuItem>
-              </>
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-[var(--color-text-secondary)]">
+                  Rp {user?.balance.toLocaleString('id-ID')}
+                </span>
+                <Link to="/profile">
+                  <Button variant="ghost" size="sm" icon={User} />
+                </Link>
+                <Button variant="ghost" size="sm" icon={LogOut} onClick={logout} />
+              </div>
             ) : (
-              <>
-                <MenuItem 
-                  component={RouterLink} 
-                  to="/login"
-                  onClick={handleMobileMenuClose}
-                >
-                  Login
-                </MenuItem>
-                <MenuItem 
-                  component={RouterLink} 
-                  to="/register"
-                  onClick={handleMobileMenuClose}
-                >
-                  Register
-                </MenuItem>
-                <MenuItem onClick={toggleTheme}>
-                  {mode === 'light' ? 'Dark Mode' : 'Light Mode'}
-                </MenuItem>
-              </>
+              <div className="flex items-center space-x-2">
+                <Link to="/login">
+                  <Button variant="ghost" size="sm">Login</Button>
+                </Link>
+                <Link to="/signup">
+                  <Button variant="primary" size="sm">Sign Up</Button>
+                </Link>
+              </div>
             )}
-          </Menu>
-        </Box>
-      </Toolbar>
-    </AppBar>
+          </div>
+        </div>
+      </div>
+    </header>
   );
 };
 
